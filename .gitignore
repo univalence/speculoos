@@ -1,0 +1,12 @@
+classes
+target
+.DS_Store
+*.iml
+.idea
+.cpcache
+resources/public/js
+.shadow-cljs
+node_modules
+*.log
+.nrepl-port
+package-lock.json
