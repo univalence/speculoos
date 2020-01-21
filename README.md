@@ -15,12 +15,30 @@ or if you are using leiningen or boot:
 ## requiring
 
 All further exemple asumes the following ns declaration 
+
+clojure: 
+``` clojure
+(ns speculoos.tut
+  (:require [clojure.spec.alpha :as s]
+            [speculoos.utils :as u :refer [is]]
+            [speculoos.core :refer [defc deft fm defm defspec spec cpred]]))
 ```
+
+clojurescript:
+``` clojure
+(ns speculoos.tut
+  (:require [clojure.spec.alpha :as s]
+            [speculoos.utils :as u :refer [is]]
+            [speculoos.core :refer-macros [defc deft fm defm defspec spec cpred]]))
+```
+
+cljc:
+``` clojure 
 (ns speculoos.tut
   (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
             [speculoos.utils :as u :refer [is]])
   (#?(:clj :require :cljs :require-macros)
-   [speculoos.core :refer [defc deft fm defm defspec spec cpred]]))
+   [speculoos.core :refer [defc deft fm defm defspec spec cpred]])) 
 ```
 
 ## `deft`
@@ -109,7 +127,7 @@ Here we check if the argument is a number and turn it to an integer if so
 
 Now we've got a spec that is suitable to use in coercion forms.
 
-```
+``` clojure
 ;; regular syntax
 
 (deft num2 [val :< ::int!])
