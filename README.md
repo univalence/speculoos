@@ -278,3 +278,5 @@ With the `SpecImpl` record you have something that behaves exactely like a spec 
 
 speculoos.core exposes a `spec` macro that let you create a `SpecImpl` record.  
 It works exactly like `clojure.spec.alpha/spec` but wraps the result in a `SpecImpl` instance
+
+speculos.core also bring the `cpred` macro which is handy to build coercion specs.
