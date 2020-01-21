@@ -10,19 +10,19 @@
 (do :extra-patterns-predicates
 
     (defn coercion-shorthand-pattern? [xs]
-      (and (= 2 (count xs))
+      (and (seq? xs) (= 2 (count xs))
            (qualified-keyword? (first xs))))
 
     (defn validation-shorthand-pattern? [xs]
-      (and (= 2 (count xs))
+      (and (seq? xs) (= 2 (count xs))
            (qualified-keyword? (second xs))))
 
     (defn coercion-pattern? [xs]
-      (and (= 3 (count xs))
+      (and (seq? xs) (= 3 (count xs))
            (= :< (second xs))))
 
     (defn validation-pattern? [xs]
-      (and (= 3 (count xs))
+      (and (seq? xs) (= 3 (count xs))
            (= :- (second xs)))))
 
 (do :core.match.extension
@@ -161,7 +161,7 @@
                     lpat'
                     (if-not (seq? lpat)
                       lpat
-                      (condp = (u/prob 'syntag pat (mp/syntax-tag lpat))
+                      (condp = (mp/syntax-tag lpat)
                         ::spec (list (first lpat) :- (list (ss/spec-sym "*") (nth lpat 2)))
                         ::coerce (list (first lpat) :< (list (ss/spec-sym "*") (nth lpat 2)))
                         ::spec-shorthand (list (first lpat) :- (list (ss/spec-sym "*") (second lpat)))

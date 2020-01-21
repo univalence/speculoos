@@ -2,7 +2,7 @@
   (:require [speculoos.utils :as u]
             [speculoos.specs :as ss]
             [speculoos.state :as state :refer [*cljs?*]]
-            [speculoos.patterns :refer [defm]]
+            [speculoos.patterns :refer [defm] :as ps]
             [spec-tools.data-spec :as ds]
             [clojure.test.check.generators :as tcg]))
 
@@ -12,35 +12,47 @@
   (loop [ret [] seed xs]
     (if-not (seq seed)
       ret
-      (let [base {:sym (first seed)}
-            bassoc (partial assoc base)]
+      (cond
+        ;; unwrapped validation shorthand pattern
+        (qualified-keyword? (second seed))
+        (recur (conj ret {:sym (first seed) :validation (second seed)}) (drop 2 seed))
 
-        (cond
-          (qualified-keyword? (second seed))
-          (recur (conj ret {:sym (first seed) :validation (second seed)}) (drop 2 seed))
+        (ps/validation-pattern? (first seed))
+        (recur (conj ret {:sym (ffirst seed) :validation (-> seed first (nth 2))}) (rest seed))
 
-          (and (seq? (first seed))
-               (qualified-keyword? (ffirst seed)))
-          (recur (conj ret {:sym (-> seed first second) :coercion (ffirst seed)}) (rest seed))
+        (ps/coercion-pattern? (first seed))
+        (recur (conj ret {:sym (ffirst seed) :coercion (-> seed first (nth 2))}) (rest seed))
 
-          (= '< (second seed))
-          (recur (conj ret {:sym (first seed) :coercion (nth seed 2)}) (drop 3 seed))
+        (ps/coercion-shorthand-pattern? (first seed))
+        (recur (conj ret {:sym (-> seed first second) :coercion (ffirst seed)}) (rest seed))
 
-          :else
-          (recur (conj ret base) (rest seed)))))))
+        (ps/validation-shorthand-pattern? (first seed))
+        (recur (conj ret {:sym (ffirst seed) :validation (-> seed first second)}) (rest seed))
+
+        ;; unwrapped validation pattern
+        (= :- (second seed))
+        (recur (conj ret {:sym (first seed) :validation (nth seed 2)}) (drop 3 seed))
+
+        ;; unwrapped coercion pattern
+        (= :< (second seed))
+        (recur (conj ret {:sym (first seed) :coercion (nth seed 2)}) (drop 3 seed))
+
+        :else
+        (recur (conj ret {:sym (first seed)}) (rest seed))))))
 
 (defn binding-form [parsed-fields]
-  (let []
-    (vec (mapcat (fn [{:keys [coercion sym validation]}]
-                   (cond
-                     coercion
-                     [sym `(or ~(ss/conformer-form coercion sym)
-                               ~(u/error-form `(~'pr-str ~sym) " cannot be coerced by " coercion))]
-                     validation
-                     [sym `(or ~(ss/validator-form validation sym)
-                               ~(u/error-form "invalid field value: " `(~'pr-str ~sym) " is not a valid " validation))]
-                     :else []))
-                 parsed-fields))))
+  (vec (mapcat (fn [{:keys [coercion sym validation]}]
+                 (cond
+                   coercion
+                   [sym (ss/conformer-strict-form
+                          coercion sym
+                          (u/error-form `(~'pr-str ~sym) " cannot be coerced by " coercion))]
+                   validation
+                   [sym (ss/validator-strict-form
+                          validation sym
+                          (u/error-form "invalid field value: " `(~'pr-str ~sym) " is not a valid " validation))]
+                   :else []))
+               parsed-fields)))
 
 (defn positional-constructor-form [constr-sym parsed-fields]
   (let [syms (mapv :sym parsed-fields)]
@@ -78,10 +90,10 @@
                        parsed-fields))]
 
       (state/register-type! n {:record-symbol recsym
-                         :map-constructor-symbol map-constr-sym
-                         :predicate-symbol predsym
-                         :spec-keyword spec-keyword
-                         :fields fields-names})
+                               :map-constructor-symbol map-constr-sym
+                               :predicate-symbol predsym
+                               :spec-keyword spec-keyword
+                               :fields fields-names})
 
       `(do (declare ~n ~predsym)
            (defrecord ~recsym ~fields-names ~@body)
@@ -127,6 +139,7 @@
     `(do
        (deft ~name ~fields)
        (let [~sym ~name]
+
          (defm ~name
                ~@(interleave
                    (take-nth 2 body)

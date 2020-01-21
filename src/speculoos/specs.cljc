@@ -1,7 +1,7 @@
 (ns speculoos.specs
   (:refer-clojure :exclude [defrecord])
-  (:require #?(:clj  [clojure.core :as c] :cljs [cljs.core :as c])
-            #?(:clj  [clojure.spec.alpha :as s] :cljs [cljs.spec.alpha :as s])
+  (:require #?(:clj [clojure.core :as c] :cljs [cljs.core :as c])
+            #?(:clj [clojure.spec.alpha :as s] :cljs [cljs.spec.alpha :as s])
             [spec-tools.data-spec :as ds]
             [clojure.test.check.generators :as tcg]
             [clojure.spec.gen.alpha :as gen]
@@ -32,13 +32,41 @@
              (when-not (~(spec-sym "invalid?") conformed#)
                conformed#))))
 
+       (defn conformer-strict-form
+         ([s]
+          (let [sym (gensym)]
+            `(fn [~sym]
+               ~(conformer-strict-form s sym (u/error-form "cannot conform " sym " to " s)))))
+         ([s e]
+          (let [sym (gensym)]
+            `(fn [~sym] ~(conformer-strict-form s sym e))))
+         ([s x e]
+          `(let [x# ~x
+                 conformed# (~(spec-sym "conform") ~s x#)]
+             (if-not (~(spec-sym "invalid?") conformed#)
+               conformed#
+               ~e))))
+
        (defn validator-form
          ([s]
           `(fn [x#]
              (when (~(spec-sym "valid?") ~s x#) x#)))
          ([s x]
           `(let [x# ~x]
-             (when (~(spec-sym "valid?") ~s x#) x#)))))
+             (when (~(spec-sym "valid?") ~s x#) x#))))
+
+       (defn validator-strict-form
+         ([s]
+          (let [sym (gensym)]
+            `(fn [~sym]
+               ~(validator-strict-form s (u/error-form sym "is not a valid " s)))))
+         ([s e]
+          (let [sym (gensym)]
+            `(fn [~sym]
+               (if (~(spec-sym "valid?") ~s ~sym) sym e))))
+         ([s x e]
+          `(let [x# ~x]
+             (if (~(spec-sym "valid?") ~s x#) x# ~e)))))
 
    )
 
@@ -49,9 +77,10 @@
 (c/defrecord SpecImpl
   [explain conform unform gen with-gen describe]
 
-  #?@(:clj [s/Specize
-            (specize* [s] s)
-            (specize* [s _] s)])
+  s/Specize
+  (specize* [s] s)
+  (specize* [s _] s)
+
   s/Spec
   (explain* [s path via in x] (explain s path via in x))
   (conform* [s x] (conform s x))
@@ -63,14 +92,16 @@
 (defn spec->SpecImpl
   "wrap any kind of specizable thing into a SpecImpl record"
   [s]
-  (let [s (s/specize* s)]
-    (SpecImpl.
-      (fn [_ path via in x] (s/explain* s path via in x))
-      (fn [_ x] (s/conform* s x))
-      (fn [_ x] (s/unform* s x))
-      (fn [_ overrides path rmap] (s/gen* s overrides path rmap))
-      (fn [_ g] (s/with-gen* s g))
-      (fn [_] (s/describe* s)))))
+  (if (instance? SpecImpl s)
+    s
+    (let [s (s/specize* s)]
+      (SpecImpl.
+        (fn [_ path via in x] (s/explain* s path via in x))
+        (fn [_ x] (s/conform* s x))
+        (fn [_ x] (s/unform* s x))
+        (fn [_ overrides path rmap] (s/gen* s overrides path rmap))
+        (fn [_ g] (s/with-gen* s g))
+        (fn [_] (s/describe* s))))))
 
 (def invalid?
   #{:clojure.spec.alpha/invalid
@@ -97,29 +128,38 @@
     :gen
     (fn [s & _] (u/error "no gen for: " s))))
 
+(defn fn->conform-impl [f]
+  (fn [_ x]
+    (if-let [conformed (f x)]
+      conformed
+      invalid)))
+
 (defn spec
 
   ([x]
    (cond
      (map? x) (merge spec0 x)
-     (fn? x) (spec {:conform x})
+     (fn? x) (spec {:conform (fn->conform-impl x)})
      :else (u/error "conform-fn | spec-impl-map \n had: \n" x)))
 
   ([conform gen]
-   (spec {:conform conform
+   (spec {:conform (fn->conform-impl conform)
           :gen (if (tcg/generator? gen)
                  (fn [& _] gen)
                  gen)}))
 
   ([conform gen form & xs]
-   (apply assoc (spec conform gen)
+   (apply assoc
+          (spec conform gen)
           :form form
           xs)))
 
+(defn pred [f]
+  (spec (fn [x] (when (f x) x))))
+
 #?(:clj (defmacro defspec [n & xs]
-          (if (:ns &env)
-            `(cljs.spec.alpha/def ~(keyword (str *ns*) (name n)) (spec ~@xs))
-            `(clojure.spec.alpha/def ~(keyword (str *ns*) (name n)) (spec ~@xs)))))
+          (binding [*cljs?* (:ns &env)]
+            `(~(spec-sym "def") ~(keyword (str *ns*) (name n)) (spec ~@xs)))))
 
 (defn wrap-gen&conform
 
@@ -150,3 +190,8 @@
   (gen/generate (s/gen spec)))
 
 #_(cljs.pprint/pprint (s/registry))
+
+;; simplest form
+(spec (fn [x] (if (string? x) x)))
+
+(s/conform #{:aze :baz} :aze)

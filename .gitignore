@@ -10,3 +10,4 @@ node_modules
 *.log
 .nrepl-port
 package-lock.json
+settings.xml

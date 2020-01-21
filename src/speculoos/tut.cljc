@@ -1,18 +1,9 @@
-(ns speculoos.walkthrough
-  (:require #?(:cljs [cljs.spec.alpha :as s]
-               :clj  [clojure.spec.alpha :as s])
-            #?(:clj  [clojure.core.match]
-               :cljs [cljs.core.match])
-            [speculoos.specs :as ss]
+(ns speculoos.tut
+  (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
+    ;#?(:clj [clojure.core.match] :cljs [cljs.core.match])
             [speculoos.utils :as u :refer [is]])
-  #?(:clj
-     (:require
-       [speculoos.types :refer [defc deft]]
-       [speculoos.patterns :refer [fm defm]])
-     :cljs
-     (:require-macros
-       [speculoos.types :refer [defc deft]]
-       [speculoos.patterns :refer [fm defm]])))
+  (#?(:clj :require :cljs :require-macros)
+    [speculoos.core :refer [defc deft fm defm defspec]]))
 
 ;; defining a simple type
 
@@ -37,9 +28,7 @@
     (is (s/conform ::box {:val 1})
         (box 1))
 
-    (s/valid? ::box (box 1))
-
-    #_(ss/gen1 ::box))
+    (s/valid? ::box (box 1)))
 
 ;; we can add validation spec to our type declarations
 
@@ -51,41 +40,39 @@
 
 ;; regular syntax
 
-(deft t2 [a :- integer?
+(deft t2 [a :- integer? ;; any object that implement 'specize can be used in spec position
           b :- string?])
 
 (is (num 1))
 
 (comment (num :not-a-number)) ;; invalid field value: :not-a-number is not a valid ::int
 
-
 (is (t2 1 "io"))
 
-;; can be mixed
-(deft t3 [a ::int
-          b :- string?
-          c]) ;; a field without validation
 
-(is (t3 1 "io" :anything))
 
 ;; coercion
 
-(ss/defspec coerced-int
-            ;; conform function
-            (fn [_ x]
-              (cond
-                (integer? x) x
-                (or (string? x) (keyword? x))
-                (u/parse-int (name x))
-                :else ::s/invalid))
-            ;; gen function
-            (fn [& _] (s/gen integer?))
-            ;; descritption
-            'int)
+(defspec coerced-int
+         ;; conform function
+         (fn [x]
+           (cond
+             (integer? x) x
+             (or (string? x) (keyword? x))
+             (u/parse-int (name x))
+             :else ::s/invalid))
+         ;; generator
+         (s/gen integer?)
+         ;; descritption
+         'int)
 
 ;; shorthand syntax
 
 (deft num2 [(::coerced-int val)]) ;; coercion
+
+#_(deft num2 [(val :< int)])
+
+(int 2.3)
 
 (is (num2 1)
     (num2 "1")
@@ -147,8 +134,8 @@
          (num 4)))
 
 (defm coerced-sum [(::num2 x) ;; coercion pattern (shorthand syntax)
-                               (y ::num)] ;; validation pattern (shorthand syntax)
-                  (num (+ (:val x) (:val y))))
+                   (y ::num)] ;; validation pattern (shorthand syntax)
+      (num (+ (:val x) (:val y))))
 
 (is (coerced-sum {:val "1"} (num 2))
     (num 3))

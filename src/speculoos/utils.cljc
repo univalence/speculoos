@@ -19,7 +19,7 @@
            (apply str xs))))
 
 #?(:clj (defn error-form [& xs]
-         `(throw (new ~(if *cljs?* 'js/Error 'Exception) (~'str ~@xs)))))
+          `(throw (new ~(if *cljs?* 'js/Error 'Exception) (~'str ~@xs)))))
 
 (defn is [x & xs]
   (if-not xs
