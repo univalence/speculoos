@@ -1,9 +1,8 @@
 (ns speculoos.tut
   (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
-    ;#?(:clj [clojure.core.match] :cljs [cljs.core.match])
             [speculoos.utils :as u :refer [is]])
   (#?(:clj :require :cljs :require-macros)
-    [speculoos.core :refer [defc deft fm defm defspec]]))
+   [speculoos.core :refer [defc deft fm defm defspec spec cpred]]))
 
 ;; defining a simple type
 
@@ -53,40 +52,42 @@
 
 ;; coercion
 
-(defspec coerced-int
-         ;; conform function
-         (fn [x]
+;; lets first define a spec ::int! that will turn any number to an integer
+;; the `cpred` macro takes a function that can return nil if its argument cannot be conformed, or the argument coerced indicating success
+;; here we check if the argument is a number and turn it to an integer if so
+(s/def ::int!
+  (cpred #(when (number? %) (int %))))
+
+(s/def ::int!
+  (cpred (fn [x]
+
            (cond
-             (integer? x) x
-             (or (string? x) (keyword? x))
-             (u/parse-int (name x))
-             :else ::s/invalid))
-         ;; generator
-         (s/gen integer?)
-         ;; descritption
-         'int)
+
+             (number? x) (int x)
+
+             (or (string? x)
+                 (keyword? x)
+                 (symbol? x))
+             (#?(:cljs js/parseInt :clj Integer/parseInt)
+               (name x))))))
 
 ;; shorthand syntax
 
-(deft num2 [(::coerced-int val)]) ;; coercion
-
-#_(deft num2 [(val :< int)])
-
-(int 2.3)
+(deft num2 [(::int! val)]) ;; coercion
 
 (is (num2 1)
-    (num2 "1")
-    (num2 :1))
+    (num2 1.1)
+    (num2 1.9))
 
 (comment (num2 [])) ;; [] cannot be coerced by :parkaviz.utils.matches-tries/coerced-int
 
 ;; regular syntax
 
-(deft t4 [a :< ::coerced-int])
+(deft t4 [a :< ::int!])
 
 ;; coercion and validation can mixed
 
-(deft t5 [(::coerced-int a)
+(deft t5 [(::int! a)
           b :- integer?
           (c :- string?)]) ;; regular syntax can be wrapped in parens if more readable
 
@@ -186,8 +187,8 @@
       [x] x
       [0 x] x ;; patterns can match any values
       [x 0] x
-      [(::coerced-int x) (::coerced-int y)] (+ x y) ;; coercion pattern
-      [x y & (::coerced-int xs)] (reduce add x (cons y xs))) ;; coerced variadic pattern
+      [(::int! x) (::int! y)] (+ x y) ;; coercion pattern
+      [x y & (::int! xs)] (reduce add x (cons y xs))) ;; coerced variadic pattern
 
 (is 3 (add 1 2))
 (is 10 (add 1 2 3 4))

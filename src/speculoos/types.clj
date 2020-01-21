@@ -41,7 +41,8 @@
         (recur (conj ret {:sym (first seed)}) (rest seed))))))
 
 (defn binding-form [parsed-fields]
-  (vec (mapcat (fn [{:keys [coercion sym validation]}]
+  (->> parsed-fields
+       (mapcat (fn [{:keys [coercion sym validation]}]
                  (cond
                    coercion
                    [sym (ss/conformer-strict-form
@@ -51,8 +52,8 @@
                    [sym (ss/validator-strict-form
                           validation sym
                           (u/error-form "invalid field value: " `(~'pr-str ~sym) " is not a valid " validation))]
-                   :else []))
-               parsed-fields)))
+                   :else [])))
+       vec))
 
 (defn positional-constructor-form [constr-sym parsed-fields]
   (let [syms (mapv :sym parsed-fields)]

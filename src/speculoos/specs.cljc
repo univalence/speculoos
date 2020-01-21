@@ -7,7 +7,9 @@
             [clojure.spec.gen.alpha :as gen]
             [speculoos.utils :as u]
             #?(:clj [speculoos.state :refer [*cljs?*]]))
-  #?(:cljs (:require-macros [speculoos.specs :refer [defspec]])))
+  #?(:cljs (:require-macros [speculoos.specs :refer [defspec spec cpred]])))
+
+(declare conform)
 
 #?(:clj
 
@@ -42,7 +44,7 @@
             `(fn [~sym] ~(conformer-strict-form s sym e))))
          ([s x e]
           `(let [x# ~x
-                 conformed# (~(spec-sym "conform") ~s x#)]
+                 conformed# (conform #_~(spec-sym "conform") ~s x#)]
              (if-not (~(spec-sym "invalid?") conformed#)
                conformed#
                ~e))))
@@ -103,30 +105,9 @@
         (fn [_ g] (s/with-gen* s g))
         (fn [_] (s/describe* s))))))
 
-(def invalid?
-  #{:clojure.spec.alpha/invalid
-    :cljs.spec.alpha/invalid})
-
 (def invalid
   #?(:clj  :clojure.spec.alpha/invalid
      :cljs :cljs.spec.alpha/invalid))
-
-(def spec0
-  (assoc
-    (spec->SpecImpl
-      (s/spec-impl
-        'any
-        identity
-        (constantly (s/gen any?))
-        true
-        identity))
-    :form 'any
-    :explain
-    (fn [s path via in x]
-      (when (invalid? (s/conform s x))
-        [{:path path :pred (:form s) :val x :via via :in in}]))
-    :gen
-    (fn [s & _] (u/error "no gen for: " s))))
 
 (defn fn->conform-impl [f]
   (fn [_ x]
@@ -134,64 +115,107 @@
       conformed
       invalid)))
 
-(defn spec
+#?(:clj
+   (do (defmacro spec [& xs]
+         (binding [*cljs?* (:ns &env)]
+           `(spec->SpecImpl (~(spec-sym "spec") ~@xs))))
 
-  ([x]
-   (cond
-     (map? x) (merge spec0 x)
-     (fn? x) (spec {:conform (fn->conform-impl x)})
-     :else (u/error "conform-fn | spec-impl-map \n had: \n" x)))
+       (defmacro cpred [f & xs]
+         `(assoc
+            (spec ~f ~@xs)
+            :conform
+            (fn->conform-impl ~f)))
 
-  ([conform gen]
-   (spec {:conform (fn->conform-impl conform)
-          :gen (if (tcg/generator? gen)
-                 (fn [& _] gen)
-                 gen)}))
+       (defmacro defspec [n & xs]
+         (binding [*cljs?* (:ns &env)]
+           `(~(spec-sym "def") ~(keyword (str *ns*) (name n)) (spec ~@xs))))))
 
-  ([conform gen form & xs]
-   (apply assoc
-          (spec conform gen)
-          :form form
-          xs)))
-
-(defn pred [f]
-  (spec (fn [x] (when (f x) x))))
-
-#?(:clj (defmacro defspec [n & xs]
-          (binding [*cljs?* (:ns &env)]
-            `(~(spec-sym "def") ~(keyword (str *ns*) (name n)) (spec ~@xs)))))
-
-(defn wrap-gen&conform
-
-  [spec f]
-
-  (-> (spec->SpecImpl spec)
-
-      (update :gen
-              #(fn [& xs] (tcg/fmap f (apply % xs))))
-
-      (update :conform
-              #(fn [s x]
-                 (let [ret (% s x)]
-                   (if (invalid? ret)
-                     ret (f ret)))))))
-
-(comment
-  (clojure.core/defrecord Foo [values])
-
-  (let [s (wrap-gen&conform
-            (ds/spec ::foo
-                     {:values (s/map-of string? integer?)})
-            map->Foo)]
-
-    (gen/generate (s/gen s))))
-
-(defn gen1 [spec]
-  (gen/generate (s/gen spec)))
+(defn conform [s x]
+  (s/conform (if (fn? s) (cpred s) s) x))
 
 #_(cljs.pprint/pprint (s/registry))
 
 ;; simplest form
-(spec (fn [x] (if (string? x) x)))
+(s/conform (spec pos?) 12)
+(spec #{:a :b :c})
+(s/conform (cpred (fn [x] (when (number? x) (int x))))
+           12.2)
 
-(s/conform #{:aze :baz} :aze)
+
+(comment :scratch
+
+         (def invalid?
+           #{:clojure.spec.alpha/invalid
+             :cljs.spec.alpha/invalid})
+
+         (def spec0
+           (assoc
+             (spec->SpecImpl
+               (s/spec-impl
+                 'any
+                 identity
+                 (constantly (s/gen any?))
+                 true
+                 identity))
+             :form 'any
+             :explain
+             (fn [s path via in x]
+               (when (invalid? (s/conform s x))
+                 [{:path path :pred (:form s) :val x :via via :in in}]))
+             :gen
+             (fn [s & _] (u/error "no gen for: " s))))
+
+         (defn spec
+
+           ([x]
+            (cond
+              (map? x) (merge spec0 x)
+              (fn? x) (spec {:conform (fn->conform-impl x)})
+              (instance? SpecImpl x) x
+              (satisfies? s/Specize x) (spec->SpecImpl x)
+              :else (u/error "conform-fn | spec-impl-map | specize(able) \n had: \n" x)))
+
+           ([conform gen]
+            (spec {:conform (fn->conform-impl conform)
+                   :gen (if (tcg/generator? gen)
+                          (fn [& _] gen)
+                          gen)}))
+
+           ([conform gen form & xs]
+            (apply assoc
+                   (spec conform gen)
+                   :form form
+                   xs)))
+
+         (defn pred [f]
+           (spec (fn [x] (when (f x) x))))
+
+
+
+         (defn wrap-gen&conform
+
+           [spec f]
+
+           (-> (spec->SpecImpl spec)
+
+               (update :gen
+                       #(fn [& xs] (tcg/fmap f (apply % xs))))
+
+               (update :conform
+                       #(fn [s x]
+                          (let [ret (% s x)]
+                            (if (invalid? ret)
+                              ret (f ret)))))))
+
+         (comment
+           (clojure.core/defrecord Foo [values])
+
+           (let [s (wrap-gen&conform
+                     (ds/spec ::foo
+                              {:values (s/map-of string? integer?)})
+                     map->Foo)]
+
+             (gen/generate (s/gen s))))
+
+         (defn gen1 [spec]
+           (gen/generate (s/gen spec))))

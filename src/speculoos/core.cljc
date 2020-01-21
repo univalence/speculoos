@@ -10,8 +10,6 @@
        (defmacro defc [& xs] `(st/defc ~@xs))
        (defmacro defm [& xs] `(sp/defm ~@xs))
        (defmacro fm [& xs] `(sp/fm ~@xs))
-       (defmacro defspec [& xs] `(ss/defspec ~@xs))))
-
-(def spec ss/spec)
-
-;; TODO bring a selection of spec and test.check functions
+       (defmacro defspec [& xs] `(ss/defspec ~@xs))
+       (defmacro spec [& xs] `(ss/spec ~@xs))
+       (defmacro cpred [& xs] `(ss/cpred ~@xs))))
