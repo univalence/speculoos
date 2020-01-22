@@ -10,7 +10,7 @@ add this to your `deps.edn`:
 
 or if you are using leiningen or boot: 
 
-```[univalence/speculoos "0.1.0-SNAPSHOT"]```
+```[io.univalence/speculoos "0.1.0-SNAPSHOT"]```
 
 ## requiring
 
