@@ -27,7 +27,7 @@ clojure:
 clojurescript:
 ``` clojure
 (ns speculoos.tut
-  (:require [clojure.spec.alpha :as s]
+  (:require [cljs.spec.alpha :as s]
             [speculoos.utils :as u :refer [is]]
             [speculoos.core :refer-macros [defc deft fm defm defspec spec cpred]]))
 ```

@@ -58,6 +58,30 @@
     (#?(:cljs js/parseInt
         :clj  Integer/parseInt) (name x))))
 
+(defn guard [f]
+  (fn [x & xs]
+    (when (apply f x xs) x)))
+
+#?(:clj
+   (do
+     (defmacro f1 [pat & body]
+       `(fn [~pat] ~@body))
+
+     (defmacro f_ [& body]
+       `(fn [~'_] ~@body))
+
+     (defmacro defn+
+       "behave the same as defn but will also define applied and underscore variations"
+       [name & body]
+       (let [name* (mksym name '*)
+             name_ (mksym name '_)
+             name_* (mksym name '_*)]
+         `(do (declare ~name* ~name_ ~name_*)
+              (defn ~name ~@body)
+              (def ~name* (partial apply ~name))
+              (defn ~name_ [& xs#] #(~name* % xs#))
+              (def ~name_* (partial apply ~name_)))))))
+
 
 
 
