@@ -59,8 +59,11 @@
         :clj  Integer/parseInt) (name x))))
 
 (defn guard [f]
-  (fn [x & xs]
-    (when (apply f x xs) x)))
+  (fn
+    ([x] (when (f x) x))
+    ([x y] (when (f x y) x))
+    ([x y z] (when (f x y z) x))
+    ([x y z & others] (when (apply f x y z others) x))))
 
 #?(:clj
    (do
@@ -82,8 +85,68 @@
               (defn ~name_ [& xs#] #(~name* % xs#))
               (def ~name_* (partial apply ~name_)))))))
 
+(defn parse-fn [[fst & nxt :as all]]
+
+  (let [[name fst & nxt]
+        (if (symbol? fst)
+          (cons fst nxt)
+          (concat [nil fst] nxt))
+
+        [doc fst & nxt]
+        (if (string? fst)
+          (cons fst nxt)
+          (concat [nil fst] nxt))
+
+        [opts fst & nxt]
+        (if (map? fst)
+          (cons fst nxt)
+          (concat [{} fst] nxt))
+
+        impls
+        (if (vector? fst)
+          {fst (vec nxt)}
+          (into {}
+                (map
+                  (fn [[args & body]]
+                    [args (vec body)])
+                  (cons fst nxt))))]
+
+    (assoc opts
+      :name name
+      :doc doc
+      :impls impls
+      :cases (mapv (partial apply list*) impls))))
+
+#?(:clj
+   (defmacro marked-fn
+
+     "marked function,
+      define an anonymous form (like fn)
+      a def form (like defn)
+      and a predicate function (like fn?)"
+
+     [name & [doc]]
+
+     `(do
+
+        (defn ~(mksym "->" name) [f#]
+          (vary-meta f# assoc ~(keyword name) true))
+
+        (defmacro ~name
+          ([f#] (list '~(mksym (str *ns*) "/->" name) f#))
+          ([x# & xs#]
+           (let [parsed# (parse-fn (cons x# xs#))]
+             `(with-meta
+                (fn ~(or (:name parsed#) (gensym)) ~@(:cases parsed#))
+                {~~(keyword name) true}))))
+
+        (defn ~(mksym name "?") [x#]
+          (when (-> x# meta ~(keyword name)) x#))
 
 
+
+        (defmacro ~(mksym 'def name) [name'# & body#]
+          `(def ~name'# (~'~name ~@body#))))))
 
 
 

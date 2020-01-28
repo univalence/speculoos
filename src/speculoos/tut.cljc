@@ -48,6 +48,16 @@
 
 (is (t2 1 "io"))
 
+(deft t2' {a (s/conformer (u/guard integer?)) ;; any object that implement 'specize can be used in spec position
+           b (s/conformer (u/guard string?))})
+
+(deft t2' {a integer? ;; any object that implement 'specize can be used in spec position
+           b string?})
+
+(s/conform integer? 1)
+
+(vals (t2' :a 1 :b "aze"))
+
 
 
 ;; coercion
@@ -228,6 +238,14 @@
 (duo :iop (num 1) (num 2))
 
 ;; Using fm in protocol declaration
+
+(macroexpand '(deft rect [f :- (s/nilable ::rect)]))
+(deft rect [f :- (s/nilable ::rect)])
+
+(s/def ::rec (s/tuple integer? (s/nilable ::rec)))
+(s/valid? ::rec [1 nil])
+(s/valid? ::rec [1 [2 [3 nil]]])
+
 
 
 

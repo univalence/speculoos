@@ -1,7 +1,8 @@
 (ns speculoos.lenses
   (:refer-clojure :exclude [< get])
   (:require [clojure.core :as c]
-            [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [f1 f_ defn+]]))
+            [speculoos.utils :as u
+             #?(:clj :refer :cljs :refer-macros) [f1 f_ defn+ marked-fn]]))
 
 ;; Lens
 ;; -----------------------------------------------------------
@@ -15,6 +16,25 @@
 (defn lens? [x]
   (cond (instance? Lens x) x
         (satisfies? ILens x) (->lens x)))
+
+
+(marked-fn lfn
+           "'lfn works exactly like fn but
+            return a function that is marked with metadata
+            an lfn can be recognized via the lfn? predicate
+            lfn(s) behaves differently that regular lambdas when used as a lens
+            the value that it returns is persisted during navigation
+            it can be used as/in a lens that performs coercion (see exemples)
+            it also has a special behavior on arity 1,
+            that can be used to turn a regular function to a 'lfn")
+
+;; treating all fns as lfns could have been considered
+;; introducing a function to wrap predicates into guards
+;; the following form (valid in the current version)
+;; (mut {:a 1} [:a number? pos? (lfn inc)] identity)
+;; could have been replaced by one of those two forms
+;; (mut {:a 1} [:a (guard number?) (guard pos?) inc] identity)
+;; (mut {:a 1} [:a (guards number? pos?) inc] identity)
 
 ;; operations
 ;; -----------------------------------------------------------
@@ -49,6 +69,16 @@
         (reduce put*
                 (put x l v)
                 (partition 2 lvs))))
+
+(defn+ pass
+       "take a datastructure and a series of lenses
+        try to forward x thru all given lenses
+        can be used to do validation and coercion (with the help of 'lfn)"
+       [x & xs]
+       (if (seq xs)
+         (when-let [x' (mut x (first xs) identity)]
+           (pass* x' (next xs)))
+         x))
 
 ;; creation
 ;; -----------------------------------------------------------
@@ -92,6 +122,11 @@
          ;; lens composition
          (vector? x)
          (reduce lens+ (map lens x))
+
+         ;; lfn perform a transformation while navigating
+         (lfn? x)
+         (lens (fn [y] (x y))
+               (fn [y f] (when-let [y' (x y)] (f y'))))
 
          ;; functions are turned into a guard-lens
          (fn? x)
@@ -226,7 +261,7 @@
   (assert (= "\"io\"\n"
              (with-out-str (mut {:a "io"} [:a "io"] u/prob))))
 
-  (mut 1 neg? inc)
+  (assert (nil? (mut 1 neg? inc)))
 
   (assert (= {:a 3, :c {:d 3}}
              (mut {:a 1 :c {:d 2}}
@@ -257,7 +292,15 @@
              (mut {} (path :b) (fnil inc 0))))
 
   (assert (= {:a {:b 1}}
-             (mut {:a {:b 1}} (? [:a :z :b]) inc))))
+             (mut {:a {:b 1}} (? [:a :z :b]) inc)))
+
+  (assert (= (pass
+               {:a 1 :b "io" :p 1}
+               [:a number? pos? (lfn inc)]
+               [:b string?])
+             {:a 2 ;; :a has been coerced (with the help of 'lfn
+              :b "io"
+              :p 1})))
 
 
 

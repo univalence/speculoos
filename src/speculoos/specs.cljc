@@ -44,7 +44,7 @@
             `(fn [~sym] ~(conformer-strict-form s sym e))))
          ([s x e]
           `(let [x# ~x
-                 conformed# (conform #_~(spec-sym "conform") ~s x#)]
+                 conformed# (~(spec-sym "conform") ~s x#)]
              (if-not (~(spec-sym "invalid?") conformed#)
                conformed#
                ~e))))
@@ -141,6 +141,9 @@
 (s/conform (cpred (fn [x] (when (number? x) (int x))))
            12.2)
 
+(s/conform (s/spec {:a integer?
+                    :b string?})
+            {:a 1 :b "io"})
 
 (comment :scratch
 

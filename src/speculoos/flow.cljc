@@ -159,4 +159,13 @@
   (assert
     (= ((f_ (+ _ _)) 1)
        ((f1 x (+ x x)) 1)
-       ((f1 {a :a} (+ a a)) {:a 1}))))
+       ((f1 {a :a} (+ a a)) {:a 1})))
+
+  ;; using flow as a spec like mecanism
+
+  (> {:a 1 :b "io" :p 1}
+     {[:a pos?] nil [:b string?] nil})
+
+  (> {:a :1 :b "io" :p 1}
+     {[:a number? pos?] nil
+      [:b string?] nil}))

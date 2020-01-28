@@ -69,9 +69,19 @@
        (let ~(binding-form parsed-fields)
          (~constr-sym (merge ~s ~(zipmap ks syms)))))))
 
+(defn unpositional-constructor-form [constr-sym parsed-fields]
+  (let [s (gensym)
+        syms (mapv :sym parsed-fields)
+        ks (map (comp keyword name) syms)]
+    `(fn self#
+       ([{:keys ~syms :as ~s}]
+        (let ~(binding-form parsed-fields)
+          (~constr-sym (merge ~s ~(zipmap ks syms)))))
+       ([x# & xs#] (self# (apply hash-map x# xs#))))))
+
 ;; macros -------------------------------------------------------------------------------------
 
-(defmacro deft
+(defmacro deft-v1
   [n fields & body]
 
   (binding [*cljs?* (and (:ns &env) true)]
@@ -96,7 +106,23 @@
                                :spec-keyword spec-keyword
                                :fields fields-names})
 
-      `(do (declare ~n ~predsym)
+      `(do (declare ~n ~predsym ~map-constr-sym)
+
+           (~(ss/spec-sym "def") ~spec-keyword
+
+             (-> (ss/spec->SpecImpl (ds/spec ~spec-keyword ~spec-structure))
+                 ;; wrapping the generator and the conformer
+                 (update :gen
+                         #(fn [& xs#]
+                            (tcg/fmap ~map-constr-sym
+                                      (apply % xs#))))
+                 (update :conform
+                         #(fn [s# x#]
+                            (let [ret# (% s# x#)]
+                              (if (~(ss/spec-sym "invalid?") ret#)
+                                ret#
+                                (~map-constr-sym ret#)))))))
+
            (defrecord ~recsym ~fields-names ~@body)
            (def ~n ~constr)
            (def ~map-constr-sym ~map-constr)
@@ -118,9 +144,49 @@
                                w#)))
 
            #_(us/defspec ~n)
-           (~(ss/spec-sym "def") ~spec-keyword
+           ))))
 
-             (-> (ss/spec->SpecImpl (ds/spec ~spec-keyword ~spec-structure))
+(defmacro deft
+  [n fields & body]
+
+  (binding [*cljs?* (and (:ns &env) true)]
+
+    (let [positional? (vector? fields)
+          fields (if positional? fields (map #(list (key %) :< (val %)) fields))
+          recsym (u/name->class-symbol n)
+          parsed-fields (parse-fields fields)
+          fields-names (mapv :sym parsed-fields)
+          constr (positional-constructor-form (u/mksym '-> recsym) parsed-fields)
+          map-constr (map-constructor-form (u/mksym 'map-> recsym) parsed-fields)
+          map-constr-sym (u/mksym 'map-> n)
+          predsym (u/mksym n "?")
+          pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)
+          spec-keyword (keyword (str *ns*) (name n))
+          spec-structure
+          (zipmap (map keyword fields-names)
+                  (map #(or (:coercion %) (:validation %) `identity)
+                       parsed-fields))
+
+          sub-specs
+          (map (fn [{:keys [sym validation coercion]}]
+                 `(~(ss/spec-sym "def")
+                    ~(keyword (str *ns* "." n) (str sym))
+                    ~(or coercion validation `any?)))
+               parsed-fields)]
+
+      (state/register-type! n {:record-symbol recsym
+                               :map-constructor-symbol map-constr-sym
+                               :predicate-symbol predsym
+                               :spec-keyword spec-keyword
+                               :fields fields-names})
+
+      `(do (declare ~n ~predsym ~map-constr-sym)
+
+           ;; specs
+           (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
+           ~@sub-specs ;; fields specs
+           (~(ss/spec-sym "def") ~spec-keyword
+             (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys") :req-un ~(mapv second sub-specs)))
                  ;; wrapping the generator and the conformer
                  (update :gen
                          #(fn [& xs#]
@@ -131,7 +197,60 @@
                             (let [ret# (% s# x#)]
                               (if (~(ss/spec-sym "invalid?") ret#)
                                 ret#
-                                (~map-constr-sym ret#)))))))))))
+                                (~map-constr-sym ret#)))))))
+
+           (defrecord ~recsym ~fields-names ~@body)
+           ~(if positional?
+              `(do
+                 (def ~n ~(positional-constructor-form (u/mksym '-> recsym) parsed-fields))
+                 (def ~map-constr-sym ~(map-constructor-form (u/mksym 'map-> recsym) parsed-fields)))
+              `(def ~n ~(unpositional-constructor-form (u/mksym 'map-> recsym) parsed-fields)))
+           #_(def ~n ~constr)
+           #_(def ~map-constr-sym ~map-constr)
+           (def ~predsym (fn [x#] (instance? ~recsym x#)))
+           (defmethod ~pprint-sd-sym
+             ~recsym [x#]
+             (~pprint-sd-sym (cons '~n (map (partial get x#) ~(mapv keyword fields)))))
+
+
+
+           ~(if positional?
+
+              (if *cljs?*
+
+                `(extend-protocol cljs.core/IPrintWithWriter
+                   ~recsym
+                   (cljs.core/-pr-writer [x# w# _#]
+                     (cljs.core/write-all w# (cons '~n (map (partial get x#) ~(mapv keyword fields-names))))))
+
+                `(defmethod print-method
+                   ~recsym [x# w#]
+                   (print-method (cons '~n (map (partial get x#) ~(mapv keyword fields-names))) w#)))
+
+              (if *cljs?*
+
+                `(extend-protocol cljs.core/IPrintWithWriter
+                   ~recsym
+                   (cljs.core/-pr-writer [x# w# _#]
+                     (cljs.core/write-all w# (cons '~n (mapcat #(list % (get x# %)) ~(mapv keyword fields-names))))))
+
+                `(defmethod print-method
+                   ~recsym [x# w#]
+                   (print-method (cons '~n (mapcat #(list % (get x# %)) ~(mapv keyword fields-names))) w#))))
+
+           ))))
+
+(comment :recursive-spec-test
+
+         (deft2 rec [a :- integer? b :- (s/nilable ::rec)])
+
+         (macroexpand '(deft2 rec [a :- integer? b :- (s/nilable ::rec)]))
+
+         (require '[clojure.spec.alpha :as s]
+                  '[clojure.spec.gen.alpha :as gen])
+
+         (s/valid? ::rec (rec 1 (rec 2 nil)))
+         (gen/generate (s/gen ::rec)))
 
 (defmacro defc
   "another taste of deft, see tutorial"
