@@ -48,9 +48,6 @@
 
 (is (t2 1 "io"))
 
-(deft t2' {a (s/conformer (u/guard integer?)) ;; any object that implement 'specize can be used in spec position
-           b (s/conformer (u/guard string?))})
-
 (deft t2' {a integer? ;; any object that implement 'specize can be used in spec position
            b string?})
 
@@ -69,35 +66,42 @@
   (cpred #(when (number? %) (int %))))
 
 (s/def ::int!
-  (cpred (fn [x]
+  (s/conformer
+    (fn [x]
 
-           (cond
+      (cond
 
-             (number? x) (int x)
+        (number? x) (int x)
 
-             (or (string? x)
-                 (keyword? x)
-                 (symbol? x))
-             (#?(:cljs js/parseInt :clj Integer/parseInt)
-               (name x))))))
+        (or (string? x)
+            (keyword? x)
+            (symbol? x))
+        (int (#?(:cljs js/parseFloat :clj Float/parseFloat)
+               (name x)))))))
+
+(s/conform ::int! "aze")
 
 ;; shorthand syntax
 
-(deft num2 [(::int! val)]) ;; coercion
+(deft num2 [val ::int!]) ;; coercion
 
 (is (num2 1)
     (num2 1.1)
-    (num2 1.9))
+    (num2 1.9)
+    (num2 "1.2")
+    (num2 :1.2)
+    (num2 '1)
+    (num2 :1))
 
 (comment (num2 [])) ;; [] cannot be coerced by :parkaviz.utils.matches-tries/coerced-int
 
 ;; regular syntax
 
-(deft t4 [a :< ::int!])
+(deft t4 [a :- ::int!])
 
 ;; coercion and validation can mixed
 
-(deft t5 [(::int! a)
+(deft t5 [a ::int!
           b :- integer?
           (c :- string?)]) ;; regular syntax can be wrapped in parens if more readable
 
@@ -144,8 +148,8 @@
     (sum (fork (num 3) (fork (num 1) (num 2)))
          (num 4)))
 
-(defm coerced-sum [(::num2 x) ;; coercion pattern (shorthand syntax)
-                   (y ::num)] ;; validation pattern (shorthand syntax)
+(defm coerced-sum [(x ::num2)
+                   (y ::num)]
       (num (+ (:val x) (:val y))))
 
 (is (coerced-sum {:val "1"} (num 2))
@@ -197,8 +201,8 @@
       [x] x
       [0 x] x ;; patterns can match any values
       [x 0] x
-      [(::int! x) (::int! y)] (+ x y) ;; coercion pattern
-      [x y & (::int! xs)] (reduce add x (cons y xs))) ;; coerced variadic pattern
+      [(x ::int!) (y ::int!)] (+ x y) ;; coercion pattern
+      [x y & (xs ::int!)] (reduce add x (cons y xs))) ;; coerced variadic pattern
 
 (is 3 (add 1 2))
 (is 10 (add 1 2 3 4))

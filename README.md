@@ -83,20 +83,23 @@ You can pass protocols implementations as in a `defrecord` form
 
 It comes with validation and coercion capabilities. 
 
-### validation 
+### conformed fields 
 
 ``` clojure
-;; shorthand syntax
 
-(deft num [val ::int]) ;; validation
+;; shorthand syntax
+;; a spec keyword can be given after a field name, the spec will be used at construction time to conform the given value
+
+(deft num [val ::int]) 
 
 (num 1)
 
 (num :not-a-number) ;; throws: invalid field value: :not-a-number is not a valid ::int
 
 ;; regular syntax
+;; any specizable object or expression that return a spec can be assigned to a field with the help of the :- syntax
 
-(deft t2 [a :- integer? ;; any object that implement 'specize can be used in spec position
+(deft t2 [a :- integer? 
           b :- string?])
 
 (is (t2 1 "io"))
@@ -109,6 +112,11 @@ It comes with validation and coercion capabilities.
 
 (is (t3 1 "io" :anything))
 
+;; wrapped syntax
+;; if it looks more clear to you, you can wrap one or more field specifications in parentesis
+
+(deft t3' [(a ::int)
+           (b :- string?)])
 ```
 
 ### Coercion 
@@ -121,36 +129,22 @@ Here we check if the argument is a number and turn it to an integer if so
 
 ``` clojure
 (s/def ::int!
-  (cpred #(when (number? %) (int %))))
+  (cpred  #(when (number? %) (int %))))
   
 ```
 
-Now we've got a spec that is suitable to use in coercion forms.
+Now we've got a spec that can be used to coerce given field values.
 
 ``` clojure
 ;; regular syntax
 
-(deft num2 [val :< ::int!])
-
-;; shorthand syntax
-
-(deft num2 [(::int! val)])
+(deft num2 [val ::int!])
 
 (num2 2.4) ;;=> (num 2)
 
 (is (num2 1)
     (num2 1.1)
     (num2 1.9))
-
-;; coercion and validation can mixed
-
-(deft t5 [(::int! a)
-          b :- integer?
-          (c :- string?)]) ;; regular syntax can be wrapped in parens if more readable
-
-(is (t5 1.3 2 "io")
-    (t5 1 2 "io"))
-
 ```
 
 
@@ -171,18 +165,11 @@ Now we've got a spec that is suitable to use in coercion forms.
     (sum (fork (num 3) (fork (num 1) (num 2)))
          (num 4)))
 
-(defm coerced-sum [(::num2 x) ;; coercion pattern (shorthand syntax)
+(defm coerced-sum [(x ::num2) ;; coercion pattern (shorthand syntax)
                    (y ::num)] ;; validation pattern (shorthand syntax)
       (num (+ (:val x) (:val y))))
 
-(is (coerced-sum {:val "1"} (num 2))
-    (num 3))
-
-(defm coerced-sum2 [(x :< ::num2) ;; coercion pattern
-                    (y :- ::num)] ;; validation pattern
-      (num (+ (:val x) (:val y))))
-
-(is (coerced-sum2 {:val "1"} (num 2))
+(is (coerced-sum {:val 1.3} (num 2))
     (num 3))
 
 ;; anonymous form
@@ -224,12 +211,12 @@ Now we've got a spec that is suitable to use in coercion forms.
       [x] x
       [0 x] x ;; patterns can match any values
       [x 0] x
-      [(::int! x) (::int! y)] (+ x y) ;; coercion pattern
-      [x y & (::int! xs)] (reduce add x (cons y xs))) ;; coerced variadic pattern
+      [(x ::int!) (y ::int!)] (+ x y) ;; coercion pattern
+      [x y & (xs ::int!)] (reduce add x (cons y xs))) ;; coerced variadic pattern
 
 (is 3 (add 1 2))
 (is 10 (add 1 2 3 4))
-(is 10 (add 1 2 3 "4"))
+(is 10 (add 1 2 3 4.2))
 
 ;; the following will throw because it does not match the return spec
 (comment (add 0 1 2 3 4.1)

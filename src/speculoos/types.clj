@@ -13,46 +13,32 @@
     (if-not (seq seed)
       ret
       (cond
-        ;; unwrapped validation shorthand pattern
+        ;; unwrapped spec shorthand pattern
         (qualified-keyword? (second seed))
-        (recur (conj ret {:sym (first seed) :validation (second seed)}) (drop 2 seed))
+        (recur (conj ret {:sym (first seed) :spec (second seed)}) (drop 2 seed))
 
-        (ps/validation-pattern? (first seed))
-        (recur (conj ret {:sym (ffirst seed) :validation (-> seed first (nth 2))}) (rest seed))
+        ;; wrapper spec pattern
+        (ps/spec-pattern? (first seed))
+        (recur (conj ret {:sym (ffirst seed) :spec (-> seed first (nth 2))}) (rest seed))
 
-        (ps/coercion-pattern? (first seed))
-        (recur (conj ret {:sym (ffirst seed) :coercion (-> seed first (nth 2))}) (rest seed))
+        ;; wrapper spec pattern
+        (ps/spec-shorthand-pattern? (first seed))
+        (recur (conj ret {:sym (ffirst seed) :spec (-> seed first second)}) (rest seed))
 
-        (ps/coercion-shorthand-pattern? (first seed))
-        (recur (conj ret {:sym (-> seed first second) :coercion (ffirst seed)}) (rest seed))
-
-        (ps/validation-shorthand-pattern? (first seed))
-        (recur (conj ret {:sym (ffirst seed) :validation (-> seed first second)}) (rest seed))
-
-        ;; unwrapped validation pattern
+        ;; unwrapped spec pattern
         (= :- (second seed))
-        (recur (conj ret {:sym (first seed) :validation (nth seed 2)}) (drop 3 seed))
-
-        ;; unwrapped coercion pattern
-        (= :< (second seed))
-        (recur (conj ret {:sym (first seed) :coercion (nth seed 2)}) (drop 3 seed))
+        (recur (conj ret {:sym (first seed) :spec (nth seed 2)}) (drop 3 seed))
 
         :else
         (recur (conj ret {:sym (first seed)}) (rest seed))))))
 
 (defn binding-form [parsed-fields]
   (->> parsed-fields
-       (mapcat (fn [{:keys [coercion sym validation]}]
-                 (cond
-                   coercion
+       (mapcat (fn [{:keys [spec sym]}]
+                 (when spec
                    [sym (ss/conformer-strict-form
-                          coercion sym
-                          (u/error-form `(~'pr-str ~sym) " cannot be coerced by " coercion))]
-                   validation
-                   [sym (ss/validator-strict-form
-                          validation sym
-                          (u/error-form "invalid field value: " `(~'pr-str ~sym) " is not a valid " validation))]
-                   :else [])))
+                          spec sym
+                          (u/error-form `(~'pr-str ~sym) " cannot be conformed to " spec))])))
        vec))
 
 (defn positional-constructor-form [constr-sym parsed-fields]
@@ -151,22 +137,15 @@
 
   (binding [*cljs?* (and (:ns &env) true)]
 
-    (let [positional? (vector? fields)
-          fields (if positional? fields (map #(list (key %) :< (val %)) fields))
-          recsym (u/name->class-symbol n)
+    (let [record-sym (u/name->class-symbol n)
+          positional? (vector? fields)
+          fields (if positional? fields (map #(list (key %) :- (val %)) fields))
           parsed-fields (parse-fields fields)
           fields-names (mapv :sym parsed-fields)
-          constr (positional-constructor-form (u/mksym '-> recsym) parsed-fields)
-          map-constr (map-constructor-form (u/mksym 'map-> recsym) parsed-fields)
           map-constr-sym (u/mksym 'map-> n)
           predsym (u/mksym n "?")
           pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)
           spec-keyword (keyword (str *ns*) (name n))
-          spec-structure
-          (zipmap (map keyword fields-names)
-                  (map #(or (:coercion %) (:validation %) `identity)
-                       parsed-fields))
-
           sub-specs
           (map (fn [{:keys [sym validation coercion]}]
                  `(~(ss/spec-sym "def")
@@ -174,7 +153,9 @@
                     ~(or coercion validation `any?)))
                parsed-fields)]
 
-      (state/register-type! n {:record-symbol recsym
+
+
+      (state/register-type! n {:record-symbol record-sym
                                :map-constructor-symbol map-constr-sym
                                :predicate-symbol predsym
                                :spec-keyword spec-keyword
@@ -199,43 +180,46 @@
                                 ret#
                                 (~map-constr-sym ret#)))))))
 
-           (defrecord ~recsym ~fields-names ~@body)
+           ;; record declaration
+           (defrecord ~record-sym ~fields-names ~@body)
+
+           ;; constructors
            ~(if positional?
               `(do
-                 (def ~n ~(positional-constructor-form (u/mksym '-> recsym) parsed-fields))
-                 (def ~map-constr-sym ~(map-constructor-form (u/mksym 'map-> recsym) parsed-fields)))
-              `(def ~n ~(unpositional-constructor-form (u/mksym 'map-> recsym) parsed-fields)))
-           #_(def ~n ~constr)
-           #_(def ~map-constr-sym ~map-constr)
-           (def ~predsym (fn [x#] (instance? ~recsym x#)))
+                 (def ~n ~(positional-constructor-form (u/mksym '-> record-sym) parsed-fields))
+                 (def ~map-constr-sym ~(map-constructor-form (u/mksym 'map-> record-sym) parsed-fields)))
+              `(def ~n ~(unpositional-constructor-form (u/mksym 'map-> record-sym) parsed-fields)))
+
+           ;; predicate
+           (def ~predsym (fn [x#] (instance? ~record-sym x#)))
+
+           ;; printing
            (defmethod ~pprint-sd-sym
-             ~recsym [x#]
+             ~record-sym [x#]
              (~pprint-sd-sym (cons '~n (map (partial get x#) ~(mapv keyword fields)))))
-
-
 
            ~(if positional?
 
               (if *cljs?*
 
                 `(extend-protocol cljs.core/IPrintWithWriter
-                   ~recsym
+                   ~record-sym
                    (cljs.core/-pr-writer [x# w# _#]
                      (cljs.core/write-all w# (cons '~n (map (partial get x#) ~(mapv keyword fields-names))))))
 
                 `(defmethod print-method
-                   ~recsym [x# w#]
+                   ~record-sym [x# w#]
                    (print-method (cons '~n (map (partial get x#) ~(mapv keyword fields-names))) w#)))
 
               (if *cljs?*
 
                 `(extend-protocol cljs.core/IPrintWithWriter
-                   ~recsym
+                   ~record-sym
                    (cljs.core/-pr-writer [x# w# _#]
                      (cljs.core/write-all w# (cons '~n (mapcat #(list % (get x# %)) ~(mapv keyword fields-names))))))
 
                 `(defmethod print-method
-                   ~recsym [x# w#]
+                   ~record-sym [x# w#]
                    (print-method (cons '~n (mapcat #(list % (get x# %)) ~(mapv keyword fields-names))) w#))))
 
            ))))

@@ -9,19 +9,11 @@
 
 (do :extra-patterns-predicates
 
-    (defn coercion-shorthand-pattern? [xs]
-      (and (seq? xs) (= 2 (count xs))
-           (qualified-keyword? (first xs))))
-
-    (defn validation-shorthand-pattern? [xs]
+    (defn spec-shorthand-pattern? [xs]
       (and (seq? xs) (= 2 (count xs))
            (qualified-keyword? (second xs))))
 
-    (defn coercion-pattern? [xs]
-      (and (seq? xs) (= 3 (count xs))
-           (= :< (second xs))))
-
-    (defn validation-pattern? [xs]
+    (defn spec-pattern? [xs]
       (and (seq? xs) (= 3 (count xs))
            (= :- (second xs)))))
 
@@ -31,10 +23,8 @@
       clojure.lang.ISeq
       (syntax-tag [xs]
         (cond
-          (validation-pattern? xs) ::spec
-          (coercion-pattern? xs) ::coerce
-          (validation-shorthand-pattern? xs) ::spec-shorthand
-          (coercion-shorthand-pattern? xs) ::coerce-shorthand
+          (spec-pattern? xs) ::spec
+          (spec-shorthand-pattern? xs) ::spec-shorthand
           (state/registered-type? (first xs)) ::type
           (u/predicate-symbol? (first xs)) ::pred
           :else ::m/seq)))
@@ -47,15 +37,9 @@
       (m/emit-pattern (list x :guard c)))
 
     (defmethod m/emit-pattern ::spec [[x _ s]]
-      (m/emit-pattern (list x :guard `(partial ~(ss/spec-sym "valid?") ~s))))
-
-    (defmethod m/emit-pattern ::coerce [[x _ s]]
       (m/emit-pattern (list x :<< (ss/conformer-form s))))
 
     (defmethod m/emit-pattern ::spec-shorthand [[x s]]
-      (m/emit-pattern (list x :guard `(partial ~(ss/spec-sym "valid?") ~s))))
-
-    (defmethod m/emit-pattern ::coerce-shorthand [[s x]]
       (m/emit-pattern (list x :<< (ss/conformer-form s))))
 
     (defmethod m/emit-pattern-for-syntax [:default :as]
