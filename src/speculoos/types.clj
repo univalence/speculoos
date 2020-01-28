@@ -17,17 +17,17 @@
         (qualified-keyword? (second seed))
         (recur (conj ret {:sym (first seed) :spec (second seed)}) (drop 2 seed))
 
-        ;; wrapper spec pattern
-        (ps/spec-pattern? (first seed))
-        (recur (conj ret {:sym (ffirst seed) :spec (-> seed first (nth 2))}) (rest seed))
-
-        ;; wrapper spec pattern
-        (ps/spec-shorthand-pattern? (first seed))
-        (recur (conj ret {:sym (ffirst seed) :spec (-> seed first second)}) (rest seed))
-
         ;; unwrapped spec pattern
         (= :- (second seed))
         (recur (conj ret {:sym (first seed) :spec (nth seed 2)}) (drop 3 seed))
+
+        ;; wrapped spec pattern
+        (ps/spec-pattern? (first seed))
+        (recur (conj ret {:sym (ffirst seed) :spec (-> seed first (nth 2))}) (rest seed))
+
+        ;; wrapped spec pattern shorthand
+        (ps/spec-shorthand-pattern? (first seed))
+        (recur (conj ret {:sym (ffirst seed) :spec (-> seed first second)}) (rest seed))
 
         :else
         (recur (conj ret {:sym (first seed)}) (rest seed))))))
@@ -55,15 +55,8 @@
        (let ~(binding-form parsed-fields)
          (~constr-sym (merge ~s ~(zipmap ks syms)))))))
 
-(defn unpositional-constructor-form [constr-sym parsed-fields]
-  (let [s (gensym)
-        syms (mapv :sym parsed-fields)
-        ks (map (comp keyword name) syms)]
-    `(fn self#
-       ([{:keys ~syms :as ~s}]
-        (let ~(binding-form parsed-fields)
-          (~constr-sym (merge ~s ~(zipmap ks syms)))))
-       ([x# & xs#] (self# (apply hash-map x# xs#))))))
+(defn unpositional-constructor-form [constr-sym]
+  `(fn [& xs#] (~constr-sym (apply hash-map xs#))))
 
 ;; macros -------------------------------------------------------------------------------------
 
@@ -143,14 +136,15 @@
           parsed-fields (parse-fields fields)
           fields-names (mapv :sym parsed-fields)
           map-constr-sym (u/mksym 'map-> n)
+          map-builtin-constr-sym (u/mksym 'map-> record-sym)
           predsym (u/mksym n "?")
           pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)
           spec-keyword (keyword (str *ns*) (name n))
           sub-specs
-          (map (fn [{:keys [sym validation coercion]}]
+          (map (fn [{:keys [sym spec]}]
                  `(~(ss/spec-sym "def")
                     ~(keyword (str *ns* "." n) (str sym))
-                    ~(or coercion validation `any?)))
+                    ~(or spec `any?)))
                parsed-fields)]
 
 
@@ -161,7 +155,7 @@
                                :spec-keyword spec-keyword
                                :fields fields-names})
 
-      `(do (declare ~n ~predsym ~map-constr-sym)
+      `(do (declare ~n ~predsym ~map-constr-sym ~map-builtin-constr-sym)
 
            ;; specs
            (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
@@ -171,24 +165,24 @@
                  ;; wrapping the generator and the conformer
                  (update :gen
                          #(fn [& xs#]
-                            (tcg/fmap ~map-constr-sym
+                            (tcg/fmap ~map-builtin-constr-sym
                                       (apply % xs#))))
                  (update :conform
                          #(fn [s# x#]
                             (let [ret# (% s# x#)]
                               (if (~(ss/spec-sym "invalid?") ret#)
                                 ret#
-                                (~map-constr-sym ret#)))))))
+                                (~map-builtin-constr-sym ret#)))))))
 
            ;; record declaration
            (defrecord ~record-sym ~fields-names ~@body)
 
            ;; constructors
            ~(if positional?
-              `(do
-                 (def ~n ~(positional-constructor-form (u/mksym '-> record-sym) parsed-fields))
-                 (def ~map-constr-sym ~(map-constructor-form (u/mksym 'map-> record-sym) parsed-fields)))
-              `(def ~n ~(unpositional-constructor-form (u/mksym 'map-> record-sym) parsed-fields)))
+              `(def ~n ~(positional-constructor-form (u/mksym '-> record-sym) parsed-fields))
+              `(def ~n ~(unpositional-constructor-form map-constr-sym)))
+
+           (def ~map-constr-sym ~(map-constructor-form map-builtin-constr-sym parsed-fields))
 
            ;; predicate
            (def ~predsym (fn [x#] (instance? ~record-sym x#)))

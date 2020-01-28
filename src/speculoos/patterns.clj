@@ -42,8 +42,8 @@
     (defmethod m/emit-pattern ::spec-shorthand [[x s]]
       (m/emit-pattern (list x :<< (ss/conformer-form s))))
 
-    (defmethod m/emit-pattern-for-syntax [:default :as]
-      [[p _ sym]] (vary-meta (m/emit-pattern p) merge {:as sym}))
+    (defmethod m/emit-pattern-for-syntax [:default :as] [[p _ sym]]
+      (vary-meta (m/emit-pattern p) merge {:as sym}))
 
     (comment ;; the following definition is due to
       (m/match [1] [(x :<< inc)] x)
@@ -147,9 +147,7 @@
                       lpat
                       (condp = (mp/syntax-tag lpat)
                         ::spec (list (first lpat) :- (list (ss/spec-sym "*") (nth lpat 2)))
-                        ::coerce (list (first lpat) :< (list (ss/spec-sym "*") (nth lpat 2)))
                         ::spec-shorthand (list (first lpat) :- (list (ss/spec-sym "*") (second lpat)))
-                        ::coerce-shorthand (list (second lpat) :< (list (ss/spec-sym "*") (first lpat)))
                         lpat))]
                 [(conj blpat lpat') (wrap-return expr)]))]
 

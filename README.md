@@ -204,8 +204,6 @@ Now we've got a spec that can be used to coerce given field values.
 
 ;; Even variadic
 
-(s/def ::ints (s/coll-of ::int))
-
 (defm add
       ::int ;; a return spec can be given before clauses
       [x] x
