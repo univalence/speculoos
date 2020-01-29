@@ -8,10 +8,35 @@
 
 ;; impl ------------------------------------------------------------------------------------
 
+(defn optional-field-key [x]
+  (and (list? x) (= '? (first x))))
+
+(defn split-fields [fields]
+  (and (map? fields)
+       (loop [fs fields
+              ret {:optional-fields {} :required-fields {}}]
+         (if-not (seq fs)
+           ret
+           (let [[k s] (first fs)]
+             (recur (next fs)
+                    (assoc-in ret (if (optional-field-key k)
+                                    [:optional-fields (second k)]
+                                    [:required-fields k]) s)))))))
+
+(defn optional-field? [{:keys [sym]}]
+  (and (list? sym) (= '? (first sym))))
+
+(defn flat-optional-fields [parsed-fields]
+  (mapv (fn [x]
+          (if (optional-field? x)
+            (assoc f :optional true :sym (second (:sym f)))
+            f))
+        parsed-fields))
+
 (defn parse-fields [xs]
   (loop [ret [] seed xs]
     (if-not (seq seed)
-      ret
+      (flat-optional-fields ret)
       (cond
         ;; unwrapped spec shorthand pattern
         (qualified-keyword? (second seed))
@@ -130,22 +155,31 @@
 
   (binding [*cljs?* (and (:ns &env) true)]
 
-    (let [record-sym (u/name->class-symbol n)
+    (let [;; fields
           positional? (vector? fields)
-          fields (if positional? fields (map #(list (key %) :- (val %)) fields))
+          {:keys [required-fields optional-fields]} (u/prob 'split-fields (when-not positional? (split-fields fields)))
+          map-fields->vec-fields (partial map #(list (key %) :- (val %)))
+          fields (if positional? fields (map-fields->vec-fields required-fields))
           parsed-fields (parse-fields fields)
+          parsed-optional-fields (when-not positional? (parse-fields (map-fields->vec-fields optional-fields)))
           fields-names (mapv :sym parsed-fields)
+
+          ;; symbols
+          record-sym (u/name->class-symbol n)
           map-constr-sym (u/mksym 'map-> n)
           map-builtin-constr-sym (u/mksym 'map-> record-sym)
           predsym (u/mksym n "?")
           pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)
+
+          ;; sub specs
           spec-keyword (keyword (str *ns*) (name n))
-          sub-specs
-          (map (fn [{:keys [sym spec]}]
-                 `(~(ss/spec-sym "def")
-                    ~(keyword (str *ns* "." n) (str sym))
-                    ~(or spec `any?)))
-               parsed-fields)]
+          sub-spec-form
+          (fn [{:keys [sym spec]}]
+            `(~(ss/spec-sym "def")
+               ~(keyword (str *ns* "." n) (str sym))
+               ~(or spec `any?)))
+          sub-specs (map sub-spec-form parsed-fields)
+          optional-sub-specs (map sub-spec-form parsed-optional-fields)]
 
 
 
@@ -159,9 +193,11 @@
 
            ;; specs
            (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
-           ~@sub-specs ;; fields specs
+           ~@sub-specs ~@optional-sub-specs;; fields specs
            (~(ss/spec-sym "def") ~spec-keyword
-             (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys") :req-un ~(mapv second sub-specs)))
+             (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys")
+                                      :req-un ~(mapv second sub-specs)
+                                      :opt-un ~(mapv second optional-sub-specs)))
                  ;; wrapping the generator and the conformer
                  (update :gen
                          #(fn [& xs#]

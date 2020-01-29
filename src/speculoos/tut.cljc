@@ -55,6 +55,18 @@
 
 (vals (t2' :a 1 :b "aze"))
 
+;; optional fields
+(macroexpand '(deft t2'' {a integer?
+                          b string?
+                          (? c) keyword?}))
+
+(deft t2'' {a integer?
+             b string?
+             (? c) keyword?})
+
+(t2'' :a 1 :b "aze")
+(t2'' :a 1 :b "aze" :c "iop")
+
 
 
 ;; coercion
