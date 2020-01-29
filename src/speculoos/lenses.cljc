@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [< get])
   (:require [clojure.core :as c]
             [speculoos.utils :as u
-             #?(:clj :refer :cljs :refer-macros) [f1 f_ defn+ marked-fn]]))
+             #?(:clj :refer :cljs :refer-macros) [is isnt f1 f_ defn+ marked-fn]]))
 
 ;; Lens
 ;; -----------------------------------------------------------
@@ -214,93 +214,110 @@
 ;; assertions
 ;; -----------------------------------------------------------
 
-(do
-
-  (assert (= {:a {:b {:c 42}}}
-             (mut {} (path [:a :b :c]) (constantly 42))))
-
-  (assert (= 1 (get {:a 1} :a)))
-
-  (assert (= {:a 3}
-             (mut {:a 2} :a inc)))
-
-  (assert (= {:a {:b 2, :c -1}}
-             (mut {:a {:b 1 :c -1}}
-                  (< [:a :c pos?]
-                     [:a :b pos?])
-                  inc)))
-
-  (assert (= {:a {:b 1, :c 0}}
-             (mut< {:a {:b 1 :c -1}}
-                   [:a :c pos?] dec
-                   [:a :c neg?] inc
-                   )))
-
-  (assert (= [1 2 [4 4]]
-             (mut [1 2 [3 4]] [2 0] inc)))
-
-  (assert (nil? (mut {:a 1 :b -1} :c inc)))
-
-  (assert (= {:a 2 :b 0}
-             (mut {:a 1 :b -1} :* inc)))
-
-  (assert (nil? (mut {:a 1 :b -1} [:b pos?] inc)))
-
-  (assert (= {:a 1 :b 2}
-             (mut {:a 1 :b 1} [:b pos?] inc)))
 
 
-  (assert (zero? (get {:a {:b 0}} (lens+ (lens :a) (lens :b)))))
 
-  (assert (= "io"
-             (get {:a "io"} [:a "io"])))
+;; keyword lenses
+(is 1 (get {:a 1} :a))
+(is {:a 2} (mut {:a 1} :a inc))
+(is {:a 1 :b 1} (mut {:a 0 :b 2} :a inc :b dec))
 
-  (assert (= ""
-             (with-out-str (mut {:a "io"} [:a "iop"] u/prob))))
+;; indexes
+(is 2 (get [1 2 3] 1))
+(is [1 3 3] (mut [1 2 3] 1 inc))
+(is [2 2 2] (mut [1 2 3] 0 inc 2 dec))
+(is [1 2 [4 4]]
+    (mut [1 2 [3 4]] [2 0] inc))
 
-  (assert (= "\"io\"\n"
-             (with-out-str (mut {:a "io"} [:a "io"] u/prob))))
+;; composition
+;; vector denotes composition (left to right)
+(is 1 (get {:a {:b 1}} [:a :b]))
+(is 3 (get {:a {:b [1 2 3]}} [:a :b 2]))
+(is {:a {:b 2}} (mut {:a {:b 1}} [:a :b] inc))
+(is {:a {:b 2 :c 1}}
+    (mut {:a {:b 1 :c 2}}
+         [:a :b] inc
+         [:a :c] dec))
 
-  (assert (nil? (mut 1 neg? inc)))
+(is {:a 3, :c {:d 3}}
+    (mut {:a 1 :c {:d 2}}
+         :a (fn [x] (+ x x x))
+         [:c :d] inc))
 
-  (assert (= {:a 3, :c {:d 3}}
-             (mut {:a 1 :c {:d 2}}
-                  :a (fn [x] (+ x x x))
-                  [:c :d] inc)))
 
-  (assert (= {:a 2 :b 3}
-             (mut {:a 1 :b 2} :* inc)))
+;; functions
+(is 1 (get 1 pos?))
+(isnt (get 1 neg?))
 
-  (assert (= '(1 2)
-             (get {:a 1 :b 2} :*)))
+(is {:a 0} (mut {:a 1} [:a pos?] dec))
+(isnt (mut {:a 0} [:a pos?] dec))
 
-  (assert (= (/ 11 10)
-             (mut 1 (convertion #(* % 10)
-                                #(/ % 10))
-                  (comp inc u/prob))))
+;; or
+(is (zero? (mut< 1
+                 neg? inc
+                 pos? dec)))
+(is {:a 0}
 
-  (assert (= {:a {:b {:c 42}}}
-             (put {} (path :a :b :c) 42)
-             (put {} (path [:a :b :c]) 42)
-             (put {} (path :a [:b :c]) 42)
-             (mut {} (path [:a :b] :c) (constantly 42))))
+    (mut< {:a 1}
+          [:a pos?] dec
+          [:a neg?] inc)
 
-  (assert (= {:a {:b 2}}
-             (mut {:a {:b 1}} [:a :b] inc)))
+    (mut< {:a -1}
+          [:a pos?] dec
+          [:a neg?] inc))
 
-  (assert (= {:b 1}
-             (mut {} (path :b) (fnil inc 0))))
+(is {:a {:b 2, :c -1}}
+    (mut {:a {:b 1 :c -1}}
+         (< [:a :c pos?]
+            [:a :b pos?])
+         inc))
 
-  (assert (= {:a {:b 1}}
-             (mut {:a {:b 1}} (? [:a :z :b]) inc)))
+;; option
+(is {:a {:b 1}}
+    (mut {:a {:b 1}} (? [:a :z :b]) inc))
 
-  (assert (= (pass
-               {:a 1 :b "io" :p 1}
-               [:a number? pos? (lfn inc)]
-               [:b string?])
-             {:a 2 ;; :a has been coerced (with the help of 'lfn
-              :b "io"
-              :p 1})))
+; non existant keys
+(is {:a {:b {:c 42}}}
+    (mut {} (path [:a :b :c]) (constantly 42)))
+
+(is {:a {:b {:c 42}}}
+    (put {} (path :a :b :c) 42)
+    (put {} (path [:a :b :c]) 42)
+    (put {} (path :a [:b :c]) 42)
+    (mut {} (path [:a :b] :c) (constantly 42)))
+
+(is {:b 1}
+    (mut {} (path :b) (fnil inc 0)))
+
+; matching values
+(is "io"
+    (get {:a "io"} [:a "io"]))
+
+(isnt (get {:a "io"} [:a "iop"]))
+
+;; builtins
+
+;; keys
+(is {:a 2 :b 3}
+    (mut {:a 1 :b 2} :* inc))
+
+(is '(1 2)
+    (get {:a 1 :b 2} :*))
+
+;; convertion
+(is (/ 11 10)
+    (mut 1 (convertion #(* % 10)
+                       #(/ % 10))
+         inc))
+
+;; check
+(is (pass
+      {:a 1 :b "io" :p 1}
+      [:a number? pos? (lfn inc)]
+      [:b string?])
+    {:a 2 ;; :a has been coerced (with the help of 'lfn
+     :b "io"
+     :p 1})
 
 
 

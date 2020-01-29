@@ -27,6 +27,10 @@
     (assert (apply = x xs)
             (apply str "not equal: " x " " (interpose " " xs)))))
 
+(defn isnt [& xs]
+  (assert (every? not xs)
+          (apply str "truthy: " (interpose " " xs))))
+
 (defn word? [x]
   (or (string? x)
       (symbol? x)
