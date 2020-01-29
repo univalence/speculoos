@@ -130,20 +130,34 @@
          (binding [*cljs?* (:ns &env)]
            `(~(spec-sym "def") ~(keyword (str *ns*) (name n)) (spec ~@xs))))))
 
-(defn conform [s x]
-  (s/conform (if (fn? s) (cpred s) s) x))
+(defn one-of
+  [s1 s2 & ss]
+  (if ss
+    (reduce one-of
+            s1 (cons s2 ss))
+    (s/spec-impl
+      'histo-spec
+      (fn [x]
+        (let [ret (s/conform s1 x)]
+          (if-not (s/invalid? ret)
+            ret (s/conform s2 x))))
+      (fn []
+        (tcg/one-of
+          [(s/gen s1)
+           (s/gen s2)]))
+      true
+      identity)))
 
-#_(cljs.pprint/pprint (s/registry))
+(comment :tuto-WIP
 
-;; simplest form
-(s/conform (spec pos?) 12)
-(spec #{:a :b :c})
-(s/conform (cpred (fn [x] (when (number? x) (int x))))
-           12.2)
+         (s/conform (spec pos?) 12)
+         (spec #{:a :b :c})
+         (s/conform (cpred (fn [x] (when (number? x) (int x))))
+                    12.2)
 
-(s/conform (s/spec {:a integer?
-                    :b string?})
-            {:a 1 :b "io"})
+         (s/conform (s/spec {:a integer?
+                             :b string?})
+                    {:a 1 :b "io"}))
 
 (comment :scratch
 
