@@ -1,6 +1,7 @@
 (ns speculoos.utils
   (:require
     [clojure.string :as str]
+    [clojure.test :as test]
     [clojure.walk :refer [postwalk]]
     #?(:clj [speculoos.state :refer [*cljs?*]])
     [#?(:cljs cljs.pprint :clj clojure.pprint) :as pp]))
@@ -21,13 +22,21 @@
 #?(:clj (defn error-form [& xs]
           `(throw (new ~(if *cljs?* 'js/Error 'Exception) (~'str ~@xs)))))
 
-(defn is [x & xs]
+#?(:clj
+   (do
+     (defmacro is [x & xs]
+       `(do (test/is ~x)
+            (test/is (~'= ~x ~@xs))))
+     (defmacro isnt [x & xs]
+       `(test/is (~'= nil ~x ~@xs)))))
+
+#_(defn is [x & xs]
   (if-not xs
     (assert x "is nil!")
     (assert (apply = x xs)
             (apply str "not equal: " x " " (interpose " " xs)))))
 
-(defn isnt [& xs]
+#_(defn isnt [& xs]
   (assert (every? not xs)
           (apply str "truthy: " (interpose " " xs))))
 
