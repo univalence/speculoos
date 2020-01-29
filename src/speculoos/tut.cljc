@@ -48,7 +48,8 @@
 
 (is (t2 1 "io"))
 
-(deft t2' {a integer? ;; any object that implement 'specize can be used in spec position
+;; if no positional constructor is needed you can use map field specification
+(deft t2' {a integer? ;; a is the name of the field and integer? is the corresponding spec
            b string?})
 
 (s/conform integer? 1)
@@ -60,12 +61,15 @@
                           b string?
                           (? c) keyword?}))
 
+;; when specifying field using a map, you can add optional fields (validated only if present)
 (deft t2'' {a integer?
              b string?
              (? c) keyword?})
 
 (t2'' :a 1 :b "aze")
-(t2'' :a 1 :b "aze" :c "iop")
+(t2'' :a 1 :b "aze" :c :op)
+
+(num 1)
 
 
 

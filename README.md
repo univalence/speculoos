@@ -104,6 +104,18 @@ It comes with validation and coercion capabilities.
 
 (is (t2 1 "io"))
 
+;; if no positional constructor is needed you can use map field specification
+(deft t2' {a integer? ;; a is the name of the field and integer? is the corresponding spec
+           b string?})
+
+;; when specifying field using a map, you can add optional fields (validated only if present) 
+(deft t2'' {a integer?
+            b string?
+            (? c) keyword?}) ;; optional fields are wrapped in a (? _) expression  
+
+(t2'' :a 1 :b "aze") ;; c is not here, no problem
+(t2'' :a 1 :b "aze" :c :op) ;; :c is here and validated
+
 ;; mixed
 
 (deft t3 [a ::int
@@ -117,6 +129,8 @@ It comes with validation and coercion capabilities.
 
 (deft t3' [(a ::int)
            (b :- string?)])
+
+
 ```
 
 ### Coercion 

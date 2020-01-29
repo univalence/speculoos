@@ -48,6 +48,9 @@
 (defn map-h [f m]
   (into {} (map (fn [e] (f (key e) (val e))) m)))
 
+(defn rem-nil-vals [m]
+  (into {} (filter val m)))
+
 (defn name->class-symbol [x]
   (mksym 'R_ x))
 
