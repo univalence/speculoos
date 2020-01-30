@@ -12,4 +12,4 @@ tar xzvf apache-maven-3.6.3-bin.tar.gz
 
 dir=$(pwd)
 
-export PATH=$PATH:$dir/apache-maven-3.6.3/bin
+sudo ln  -s $dir/apache-maven-3.6.3/bin/mvn /usr/local/bin/mvn

@@ -38,8 +38,4 @@
       <version>0.10.0</version>
     </dependency>
   </dependencies>
-  <build>
-    <sourceDirectory>src</sourceDirectory>
-  </build>
-  <repositories/>
 </project>
