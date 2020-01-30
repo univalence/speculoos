@@ -14,8 +14,6 @@ jobs:
     steps:
       - checkout
 
-      - run: npm ci
-
       - restore_cache:
           keys:
             - v1-dependencies-{{ checksum "deps.edn" }}
