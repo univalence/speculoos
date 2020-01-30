@@ -1,0 +1,44 @@
+# Clojure CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-clojure/ for more details
+#
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/clojure:tools-deps-1.9.0.394-node
+        command: "/bin/bash"
+
+    working_directory: ~/repo
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - v1-npm-dependencies-{{ checksum "package-lock.json" }}
+            - v1-npm-dependencies- # fallback if cache not found
+
+      - run: npm ci
+
+
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "deps.edn" }}
+            - v1-dependencies- # fallback if cache not found
+
+      - run: ./deploy.sh
+
+      - persist_to_workspace:
+          root: .
+          paths:
+            - target
+
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: v1-dependencies-{{ checksum "deps.edn" }}
+      - save_cache:
+          paths:
+            - ./node_modules
+          key: v1-npm-dependencies-{{ checksum "package-lock.json" }}
