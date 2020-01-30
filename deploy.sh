@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-echo $PATH
+echo "$PATH"
 
 clojure -A:pack mach.pack.alpha.skinny --no-libs --project-path speculoos.jar
 
