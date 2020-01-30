@@ -32,7 +32,3 @@ jobs:
           paths:
             - ~/.m2
           key: v1-dependencies-{{ checksum "deps.edn" }}
-      - save_cache:
-          paths:
-            - ./node_modules
-          key: v1-npm-dependencies-{{ checksum "package-lock.json" }}
