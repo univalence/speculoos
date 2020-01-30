@@ -21,6 +21,8 @@ jobs:
             - v1-dependencies-{{ checksum "deps.edn" }}
             - v1-dependencies- # fallback if cache not found
 
+      - run: clj -A:test
+
       - run: ./deploy.sh
 
       - persist_to_workspace:

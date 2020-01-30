@@ -8,7 +8,7 @@
    [speculoos.patterns :refer [defm fm]]))
 
 
-(deftest all-messy
+#_(deftest all-messy
 
   (deft num [val])
   (deft fork [a b])

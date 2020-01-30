@@ -1,4 +1,5 @@
 (ns speculoos.all
+  (:gen-class)
   (:require [clojure.test :refer :all]
             [speculoos.flow-t]
             [speculoos.specs-t]
@@ -7,7 +8,7 @@
             [speculoos.specs-t]
             [speculoos.utils-t]))
 
-(defn test-all []
+(defn -main []
   (run-tests 'speculoos.flow-t
              'speculoos.specs-t
              'speculoos.types-t

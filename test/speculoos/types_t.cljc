@@ -6,9 +6,7 @@
    [speculoos.types :refer [deft]]
    [speculoos.specs :refer [cpred]]))
 
-
-
-(deftest one
+#_(deftest one
 
   (deft box [val])
 
@@ -42,7 +40,7 @@
   (is 1 ((myfun identity) 1))
   )
 
-(deftest two
+#_(deftest two
 
   ;; shorthand syntax
   ;; a spec keyword can be given after a field name, the spec will be used at construction time to conform the given value
@@ -89,7 +87,7 @@
 
   )
 
-(deftest coercion
+#_(deftest coercion
 
   ;;Lets first define a spec `::int!` that will turn any number to an integer.
 

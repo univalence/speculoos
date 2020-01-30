@@ -16,5 +16,7 @@
   {:extra-deps {pack/pack.alpha {:git/url "https://github.com/juxt/pack.alpha.git"
                                  :sha "c70740ffc10805f34836da2160fa1899601fac02"}}
    :main-opts ["-m"]}
+  :test
+  {:main-opts ["-m speculoos.all"]}
 
   }}
