@@ -6,30 +6,32 @@
    [speculoos.types :refer [deft]]
    [speculoos.specs :refer [cpred]]))
 
+;; creating a simple type with one field
+
 (deft box [val])
 
 (deftest one
 
   ;; It can be instanciated like this
 
-  (box 1) ;;=> (box 1)
+  (is (box 1)) ;;=> (box 1)
 
   ;; It prints in a more concise way than default clojure record e.g =(box 1)=
 
   ;; We can access its field with normal clojure syntax.
 
-  (:val (box 1)) ;;=> 1
+  (is (:val (box 1))) ;;=> 1
 
   ;; A predicate is available too
 
-  (box? (box 1)) ;;=> true
+  (is (box? (box 1))) ;;=> true
 
   ;; the ::box spec is defined too
 
   (is (s/conform ::box {:val 1})
       (box 1))
 
-  (s/valid? ::box (box 1)))
+  (is (s/valid? ::box (box 1))))
 
 ;;You can pass protocols implementations as in a `defrecord` form
 
@@ -51,7 +53,7 @@
 
 (deftest two
 
-  (num 1)
+  (is (num 1))
 
   (comment (num :not-a-number)) ;; throws: invalid field value: :not-a-number is not a valid ::int
 
@@ -87,8 +89,8 @@
 
 (deftest more
   (is (t2 1 "io"))
-  (t2'' :a 1 :b "aze") ;; c is not here, no problem
-  (t2'' :a 1 :b "aze" :c :op) ;; :c is here and validated
+  (is (t2'' :a 1 :b "aze")) ;; c is not here, no problem
+  (is (t2'' :a 1 :b "aze" :c :op)) ;; :c is here and validated
   (is (t3 1 "io" :anything)))
 
 ;;Lets first define a spec `::int!` that will turn any number to an integer.
@@ -102,14 +104,14 @@
 
 ;;Now we've got a spec that can be used to coerce given field values.
 
-
 ;; regular syntax
 
 (deft num2 [val ::int!])
 
 (deftest coercion
 
-  (is (num2 2) (num2 2.4)) ;;=> (num 2)
+  (is (num2 2)
+      (num2 2.4)) ;;=> (num 2)
 
   (is (num2 1)
       (num2 1.1)

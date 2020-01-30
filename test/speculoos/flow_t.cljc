@@ -115,13 +115,14 @@
          {[:a :b :c] inc}))
 
 
+  ;; the '> and <' have underscore and applied variations, please see utils-t 'testing-defn+
+
   (let [t (<_ {pos? inc}
               {neg? dec}
               nil)]
     (is (t 1) 2)
     (is (t -1) -2)
     (is (t 0) 0))
-
 
   (is ((>_ inc inc) 1)
       ((>_* [inc inc]) 1)
@@ -130,6 +131,7 @@
       (> 1 (>_ inc inc)))
 
   (isnt (l/get 1 (l/! neg?))
+        (l/get 1 neg?)
         (> 1 (link neg? inc)))
 
   (let [t (>_ {neg? inc}
@@ -143,9 +145,7 @@
   (is (zero? (> -1 (u/guard neg?) inc)))
 
 
-  (is ((f_ (+ _ _)) 1)
-      ((f1 x (+ x x)) 1)
-      ((f1 {a :a} (+ a a)) {:a 1}))
+
 
   ;; using flow as a spec like mecanism
 
