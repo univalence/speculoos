@@ -40,6 +40,13 @@
   (assert (every? not xs)
           (apply str "truthy: " (interpose " " xs))))
 
+(defn gat [xs i]
+  (if (>= i 0)
+    (cond
+      (vector? xs) (get xs i)
+      (seq? xs) (first (drop i xs)))
+    (gat (reverse xs) (- (inc i)))))
+
 (defn word? [x]
   (or (string? x)
       (symbol? x)

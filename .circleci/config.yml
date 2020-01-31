@@ -14,7 +14,9 @@ jobs:
             - v1-dependencies-{{ checksum "deps.edn" }}
             - v1-dependencies- # fallback if cache not found
 
-      - run: clojure -A:test
+      - run: clojure -A:test-jvm
+
+      - run: clojure -A:shadow compile test
 
       - run: ./deploy.sh
 

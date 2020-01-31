@@ -1,6 +1,6 @@
 (ns speculoos.lenses
-  (:refer-clojure :exclude [< get])
-  (:require [clojure.core :as c]
+  (:refer-clojure :exclude [< get =])
+  (:require #?(:clj [clojure.core :as c] :cljs [cljs.core :as c])
             [speculoos.utils :as u
              #?(:clj :refer :cljs :refer-macros) [is isnt f1 f_ defn+ marked-fn]]))
 
@@ -114,7 +114,8 @@
                (fn [x f] (f x)))
 
          ;; index or key lens
-         (or (keyword? x) (number? x))
+         ;; TODO handle negative indexes
+         (or (keyword? x) (integer? x))
          (lens (fn [y] (c/get y x))
                (fn [y f] (when (contains? y x)
                            (c/update y x f))))
@@ -135,7 +136,7 @@
 
          ;; values acts as = guards
          :else
-         (lens (partial = x)))))
+         (lens (partial c/= x)))))
 
   ([get upd]
    (Lens. get upd)))
@@ -210,6 +211,10 @@
   (lens one->other
         (fn [s f]
           (other->one (f (one->other s))))))
+
+(defn = [x]
+  (lens (fn [y] (when (c/= x y) y))
+        (fn [y f] (when (c/= x y) (f y)))))
 
 ;; assertions
 ;; -----------------------------------------------------------

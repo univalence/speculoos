@@ -1,8 +1,9 @@
 (ns speculoos.specs-t
   (:require [clojure.test :refer [deftest]]
             [clojure.spec.alpha :as s]
-            [speculoos.utils :refer [is isnt]]
-            [speculoos.specs :refer [spec->SpecImpl spec cpred one-of]]
+            [speculoos.utils #?(:clj :refer :cljs :refer-macros) [is isnt]]
+            [speculoos.specs #?@(:clj [:refer [spec->SpecImpl spec cpred one-of]]
+                                 :cljs [:refer-macros [cpred] :refer [spec->SpecImpl spec one-of]]) ]
             [clojure.spec.gen.alpha :as gen]))
 
 (deftest one

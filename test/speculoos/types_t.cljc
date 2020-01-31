@@ -1,7 +1,10 @@
 (ns speculoos.types-t
   (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
-            [speculoos.utils :as u :refer [is]]
-            [clojure.test :as test :refer [deftest]])
+            [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is]]
+            [clojure.test :as test #?(:clj :refer :cljs :refer-macros) [deftest]]
+            #?(:clj  [clojure.spec.gen.alpha :as gen]
+               :cljs [cljs.spec.gen.alpha :as gen])
+            [speculoos.specs])
   (#?(:clj :require :cljs :require-macros)
    [speculoos.types :refer [deft]]
    [speculoos.specs :refer [cpred]]))
@@ -31,22 +34,27 @@
   (is (s/conform ::box {:val 1})
       (box 1))
 
-  (is (s/valid? ::box (box 1))))
+  (is (s/valid? ::box (box 1)))
+
+  (is (every? box? (gen/sample (s/gen ::box) 1000))))
 
 ;;You can pass protocols implementations as in a `defrecord` form
 
-(deft myfun [f]
-      clojure.lang.IFn
-      (invoke [this x] ((:f this) x)))
+#?(:clj (do (deft myfun [f]
+                  clojure.lang.IFn
+                  ([this x] ((:f this) x)))
 
-(deftest impls
-  (is 1 ((myfun identity) 1)))
+            (deftest impls
+              (is 1 ((myfun identity) 1)))))
+
+;; field validation ---------------------------------------------
 
 ;; defining a simple spec for tests
 
 (s/def ::int integer?)
 
-;; shorthand syntax
+;; shorthand syntax --------
+
 ;; a spec keyword can be given after a field name, the spec will be used at construction time to conform the given value
 
 (deft num [val ::int])
@@ -59,7 +67,8 @@
 
   )
 
-;; regular syntax
+;; regular syntax -----------
+
 ;; any specizable object or expression that return a spec can be assigned to a field with the help of the :- syntax
 
 (deft t2 [a :- integer?
@@ -83,12 +92,13 @@
 ;; wrapped syntax
 ;; if it looks more clear to you, you can wrap one or more field specifications in parentesis
 
-
 (deft t3' [(a ::int)
            (b :- string?)])
 
 (deftest more
-  (is (t2 1 "io"))
+  (is (t2 1 "io")
+      (map->t2 {:a 1 :b "io"}))
+  (is (t2' :a 1 :b "io"))
   (is (t2'' :a 1 :b "aze")) ;; c is not here, no problem
   (is (t2'' :a 1 :b "aze" :c :op)) ;; :c is here and validated
   (is (t3 1 "io" :anything)))
@@ -100,7 +110,7 @@
 ;;Here we check if the argument is a number and turn it to an integer if so
 
 (s/def ::int!
-  (cpred  #(when (number? %) (int %))))
+  (cpred #(when (number? %) (int %))))
 
 ;;Now we've got a spec that can be used to coerce given field values.
 
@@ -116,6 +126,5 @@
   (is (num2 1)
       (num2 1.1)
       (num2 1.9))
-
 
   )

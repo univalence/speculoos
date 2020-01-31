@@ -1,6 +1,6 @@
 (ns speculoos.utils-t
-  (:require [clojure.test :refer [deftest]]
-            [speculoos.utils :as u :refer [is isnt f_ f1]]))
+  (:require [clojure.test :as tests :refer [deftest]]
+            [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is isnt f_ f1]]))
 
 (deftest maps
   (is (= {:a 1} (u/rem-nil-vals {:a 1 :b nil :c nil})))
@@ -27,5 +27,8 @@
       ((f_ (+ _ _)) 1)
       ((f1 x (+ x x)) 1) ;; little macro for unary functions
       ((f1 {a :a} (+ a a)) {:a 1})))
+
+#_(defn go [& _]
+  (tests/run-tests 'speculoos.utils-t))
 
 

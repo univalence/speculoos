@@ -1,0 +1,15 @@
+#kaocha/v1
+    {:tests [{:id :clj
+              :test-paths ["test" "src"]
+              :ns-patterns [".*"]
+              ;; :reporter kaocha.report.progress/report
+              ;; :plugins [:kaocha.plugin/profiling :kaocha.plugin/notifier]
+              }
+
+             {:id :cljs
+              :type :kaocha.type/cljs
+              :test-paths ["test" "src"]
+              :cljs/timeout 10000                        ; 10 seconds, the default
+              ;; :cljs/repl-env cljs.repl.node/repl-env     ; node is the default
+              :cljs/repl-env cljs.repl.browser/repl-env
+              }]}

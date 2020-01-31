@@ -1,11 +1,15 @@
 (ns speculoos.patterns-t
   (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
-            [clojure.test :refer [deftest]]
-            [speculoos.utils :as u :refer [is]])
+            #?(:cljs [cljs.core.match] :clj [clojure.core.match])
+            [clojure.test :as test #?(:clj :refer :cljs :refer-macros) [deftest]]
+            [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is]]
+            [speculoos.specs])
   (#?(:clj :require :cljs :require-macros)
    [speculoos.types :refer [deft]]
    [speculoos.specs :refer [cpred]]
    [speculoos.patterns :refer [defm fm]]))
+
+;; defining two simple types for exemples
 
 (deft num [val])
 (deft fork [a b])
@@ -26,28 +30,16 @@
       (sum (fork (num 3) (fork (num 1) (num 2)))
            (num 4))))
 
-(s/def ::int integer?)
+;; anonymous form
 
-(s/def ::int!
-  (cpred #(when (number? %) (int %))))
-
-(deft num2 [val ::int!])
-
-(defm coerced-sum [(x ::num2) ;; coercion pattern (shorthand syntax)
-                   (y ::num)] ;; validation pattern (shorthand syntax)
-      (num (+ (:val x) (:val y))))
-
-(deftest two
-
-  (is (coerced-sum {:val 1.3} (num 2))
-      (num 3))
-
-  ;; anonymous form
+(deftest testing-fm
 
   (let [f (fm [x y] :a
               [x y z] :b)]
     (and (is :a (f 1 2))
          (is :b (f 1 2 3))))
+
+  ;; Sometimes you want the whole structure, not destructured
 
   (is ((fm [(num? x) (fork y z)] [x y z])
        ;; (num? x) is what I call a type-predicate pattern
@@ -55,7 +47,59 @@
        (num 1)
        (fork 2 3))
 
-      [(num 1) 2 3]))
+      [(num 1) 2 3])
+
+  ;; In fact any symbol ending with '? in verb position is interpreted as a predicate pattern
+  ;; (it has to be a symbol ending with '? to be recognized as this)
+  (is "1&foo"
+      ((fm [(integer? x) (string? y)] (str x "&" y)) 1 "foo"))
+
+  ;; like defm, fm can of course have several cases
+  (let [f (fm [(integer? x) (string? y)] (str x "&" y)
+              [(integer? x) y] (list x y)
+              [x y] :something-else)]
+    (is (list 1 2) (f 1 2))
+    (is "1&foo" (f 1 "foo"))
+    (is :something-else (f :a :b)))
+  )
+
+;; defining two specs for exemples
+
+;; simple
+(s/def ::int integer?)
+
+;; coercive int spec
+(s/def ::int!
+  (cpred #(when (number? %) (int %))))
+
+(deft num2 [val ::int!])
+
+;; spec based matching can be done like this
+;; spec pattern have two forms:
+;; (pattern spec-keyword)
+;; (pattern :- spec-expression)
+(defm sum2
+      [(x ::num2) (y ::num)] ;; form 1
+      (num (+ (:val x) (:val y)))
+
+      [(x :- integer?) y] ;; form 2
+      (sum2 (num2 x) y)
+      )
+
+(deftest spec-patterns
+
+  (is (sum2 {:val 1.3} (num 2)) ;; coerced, case 1
+      (sum2 (num2 1) (num 2)) ;; matched case 1
+      (sum2 1 (num 2)) ;; case 2
+      (num 3)) ;; result
+
+  ;; you can put any binding pattern in a spec pattern
+  (let [f (fm [({:val (pos? x)} ::num)] x ;; if argument is a ::num, we destructure it with map literal pattern, then check that the value of the :val field is positive
+              [_] :pouetpouet)]
+    (is :pouetpouet (f (num -1)))
+    (is 1 (f (num 1))))
+
+  )
 
 ;; defm can have several arities
 
@@ -78,19 +122,29 @@
 (defm add
       ::int ;; a return spec can be given before clauses
       [x] x
-      [0 x] x ;; patterns can match any values
+      [0 x] x ;; as in core.match, patterns can match any values
       [x 0] x
       [(x ::int!) (y ::int!)] (+ x y) ;; coercion pattern
       [x y & (xs ::int!)] (reduce add x (cons y xs))) ;; coerced variadic pattern
 
-(deftest four
+(deftest testing-add
   (is 3 (add 1 2))
   (is 10 (add 1 2 3 4))
   (is 10 (add 1 2 3 4.2))
 
   ;; the following will throw because it does not match the return spec
-  (comment (add 0 1 2 3 4.1)
-           (add 1 1.2)))
+  ;; the 3 first cases are not coercing input to integer, this is why it fails
+  (comment (add 0 1.1)
+           (add 1.2)))
+
+(deftest core-match-builtin-patterns
+  ;; defm and fm can take any builtin core.match supported pattern
+  (let [f (fm [([0 & xs] :seq)] :case1
+              [(:or 1 -1)] :case2
+              [_] :case3)]
+    (is :case1 (f (list 0 1 2 3)))
+    (is :case2 (f 1))
+    (is :case3 (f :iop))))
 
 ;;speculoos.tut/add:
 ;invalid return value: 2.2 is not a valid :parkaviz.scratch.matches-tries/int
@@ -98,9 +152,16 @@
 ;; You can put several variadic patterns
 
 (defm add2
+      :- number? ;; return spec can be defined with :- if the spec is not a qualified-keyword
+      [x] x
       [x y & nil] (+ x y)
       [x y & xs] (apply add2 (add2 x y) xs))
 
 (deftest five
-  (is 18 (add2 3 4 5 6)))
+  (is 18
+      (add2 3 4 5 6)
+      (add2 18))
+
+  (comment (add2 :io)) ;; throws because of violated return spec
+  )
 

@@ -1,8 +1,8 @@
 (ns speculoos.lenses-t
   (:refer-clojure :exclude [get <])
-  (:require [clojure.test :refer [deftest]]
-            [speculoos.utils :refer [is isnt]]
-            [speculoos.lenses :refer [get put mut mut< < path pass ? convertion lfn]]))
+  (:require [clojure.test #?(:clj :refer :cljs :refer-macros) [deftest]]
+            [speculoos.utils #?(:clj :refer :cljs :refer-macros) [is isnt]]
+            [speculoos.lenses :as l :refer [get put mut mut< < path pass ? convertion #?(:clj lfn)] #?@(:cljs [:refer-macros [lfn]])]))
 
 (deftest keyword-lenses
   (is 1 (get {:a 1} :a))
@@ -56,13 +56,20 @@
 
   (is {:a {:b 2, :c -1}}
       (mut {:a {:b 1 :c -1}}
-           (< [:a :c pos?]
+           (< [:a :c pos?] ;; branching lens
               [:a :b pos?])
            inc)))
 
 (deftest option
   (is {:a {:b 1}}
-      (mut {:a {:b 1}} (? [:a :z :b]) inc)))
+      (mut {:a {:b 1}}
+           (? [:a :z :b]) ;; if points to something perform the transformation, else return data unchanged
+           inc))
+
+  (is {:a {:b 2}}
+      (mut {:a {:b 1}}
+           (? [:a :b])
+           inc)))
 
 (deftest non-existant-keys
 
@@ -70,7 +77,7 @@
       (mut {} (path [:a :b :c]) (constantly 42)))
 
   (is {:a {:b {:c 42}}}
-      (put {} (path :a :b :c) 42)
+      (put {} (path :a :b :c) 42) ;; put is a thin wrapper around 'mut, it simply wrap the transformation in a constantly call
       (put {} (path [:a :b :c]) 42)
       (put {} (path :a [:b :c]) 42)
       (mut {} (path [:a :b] :c) (constantly 42)))
@@ -82,7 +89,47 @@
   (is "io"
       (get {:a "io"} [:a "io"]))
 
-  (isnt (get {:a "io"} [:a "iop"])))
+  (isnt (get {:a "io"} [:a "iop"]))
+
+  ;; if you want to match an integer (else it would be interpreted as an index lens)
+  (is (= 2 (get [2] [0 (l/= 2)])))
+  )
+
+(deftest lfn-tests
+  ;; 'lfn works exactly like fn but
+  ;; return a function that is marked with metadata
+  ;; an lfn can be recognized via the lfn? predicate
+  ;; lfn(s) behaves differently that regular lambdas when used as a lens
+  ;; the value that it returns is persisted during navigation
+  ;; it can be used as/in a lens that performs coercion (see exemples)
+  ;; it also has a special behavior on arity 1,
+  ;; that can be used to turn a regular function to a 'lfn
+  (is 2
+      (get 1 (lfn inc)) ;; wrapping an existant fn
+      (get 1 (lfn [x] (inc x))) ;; fn like usage
+      (get 1 [number? (lfn inc)])) ;; check first that we have a number
+
+  (isnt (get :1 [number? (lfn inc)]))
+  )
+
+(deftest pass-tests
+  ;; the pass lens can be used as a validation mecanism
+  (is (pass
+        {:a 1 :b "io" :p 1}
+        [:a number? pos?]
+        [:b string?])
+      {:a 1
+       :b "io"
+       :p 1})
+
+  ;; with the help of lfn it can do coercion
+  (is (pass
+        {:a 1 :b "io" :p 1}
+        [:a number? pos? (lfn inc)] ;; <--
+        [:b string?])
+      {:a 2 ;; :a has been coerced (with the help of 'lfn
+       :b "io"
+       :p 1}))
 
 (deftest builtins
   ;; keys
@@ -96,13 +143,4 @@
   (is (/ 11 10)
       (mut 1 (convertion #(* % 10)
                          #(/ % 10))
-           inc))
-
-  ;; check
-  (is (pass
-        {:a 1 :b "io" :p 1}
-        [:a number? pos? (lfn inc)]
-        [:b string?])
-      {:a 2 ;; :a has been coerced (with the help of 'lfn
-       :b "io"
-       :p 1}))
+           inc)))

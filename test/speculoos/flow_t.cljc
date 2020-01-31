@@ -1,10 +1,10 @@
 (ns speculoos.flow-t
   (:refer-clojure :exclude [< >])
-  (:require [clojure.test :as t :refer [deftest run-tests]]
+  (:require [clojure.test :as t #?(:clj :refer :cljs :refer-macros) [deftest run-tests]]
             [speculoos.utils :refer [is isnt]]
             [speculoos.flow :refer [> >* >_ >_* < <* <_ <_* at link]]
             [speculoos.lenses :as l]
-            [speculoos.utils :as u :refer [f_ f1]]))
+            [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [f_ f1]]))
 
 (deftest all
 

@@ -1,6 +1,6 @@
-(ns speculoos.all
-  (:gen-class)
-  (:require [clojure.test :refer :all]
+(ns speculoos.test-all
+  #_(:gen-class)
+  (:require [clojure.test #?(:clj :refer :cljs :refer-macros) [run-tests]]
             [speculoos.flow-t]
             [speculoos.specs-t]
             [speculoos.types-t]
@@ -8,7 +8,9 @@
             [speculoos.specs-t]
             [speculoos.utils-t]))
 
-(defn -main []
+(println "yop")
+
+(defn -main [& _]
   (run-tests 'speculoos.flow-t
              'speculoos.specs-t
              'speculoos.types-t

@@ -37,10 +37,12 @@
       (m/emit-pattern (list x :guard c)))
 
     (defmethod m/emit-pattern ::spec [[x _ s]]
-      (m/emit-pattern (list x :<< (ss/conformer-form s))))
+      (m/emit-pattern (list (list x :guard (if *cljs?* 'cljs.core/identity clojure.core/identity))
+                            :<< (ss/conformer-form s))))
 
     (defmethod m/emit-pattern ::spec-shorthand [[x s]]
-      (m/emit-pattern (list x :<< (ss/conformer-form s))))
+      (m/emit-pattern (list (list x :guard (if *cljs?* 'cljs.core/identity clojure.core/identity))
+                            :<< (ss/conformer-form s))))
 
     (defmethod m/emit-pattern-for-syntax [:default :as] [[p _ sym]]
       (vary-meta (m/emit-pattern p) merge {:as sym}))
@@ -118,7 +120,9 @@
 
     (defmacro fm [x & xs]
       (let [[nam [x & xs]] (if (symbol? x) [x xs] [(gensym) (cons x xs)])
-            [return-spec clauses] (if (qualified-keyword? x) [x xs] [nil (cons x xs)])
+            [return-spec clauses] (cond (qualified-keyword? x) [x xs]
+                                        (= :- x) [(first xs) (next xs)]
+                                        :else [nil (cons x xs)])
             clauses (partition 2 clauses)
             arity (comp count first)
             variadic-pattern? #(-> % reverse next first (= '&))
