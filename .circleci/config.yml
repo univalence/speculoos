@@ -8,6 +8,7 @@ jobs:
     working_directory: ~/repo
     steps:
       - checkout
+      - run: sudo apt install nodejs
       - run : ./.circleci/install-maven
       - restore_cache:
           keys:
@@ -16,7 +17,7 @@ jobs:
 
       - run: clojure -A:test-jvm
 
-#      - run: clojure -A:shadow compile test
+      - run: clojure -A:shadow compile test
 
       - run: ./deploy.sh
 
