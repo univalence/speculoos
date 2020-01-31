@@ -135,7 +135,10 @@
   ;; the following will throw because it does not match the return spec
   ;; the 3 first cases are not coercing input to integer, this is why it fails
   (comment (add 0 1.1)
-           (add 1.2)))
+           (add 1.2))
+  ;;speculoos.tut/add:
+  ;invalid return value: 2.2 is not a valid :parkaviz.scratch.matches-tries/int
+  )
 
 (deftest core-match-builtin-patterns
   ;; defm and fm can take any builtin core.match supported pattern
@@ -145,9 +148,6 @@
     (is :case1 (f (list 0 1 2 3)))
     (is :case2 (f 1))
     (is :case3 (f :iop))))
-
-;;speculoos.tut/add:
-;invalid return value: 2.2 is not a valid :parkaviz.scratch.matches-tries/int
 
 ;; You can put several variadic patterns
 

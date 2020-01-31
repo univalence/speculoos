@@ -3,8 +3,17 @@
             [clojure.spec.alpha :as s]
             [speculoos.utils #?(:clj :refer :cljs :refer-macros) [is isnt]]
             [speculoos.specs #?@(:clj [:refer [spec->SpecImpl spec cpred one-of]]
-                                 :cljs [:refer-macros [cpred] :refer [spec->SpecImpl spec one-of]]) ]
+                                 :cljs [:refer-macros [cpred] :refer [spec->SpecImpl spec one-of]])]
             [clojure.spec.gen.alpha :as gen]))
+
+;; With clojure.spec, when you are creating a spec, or reifying the spec protocol,
+;; what you get back is an opaque object, not allowing implementation sharing or composition.
+;; With the `SpecImpl` record you have something that behaves exactely like a spec but expose its implementations.
+
+;; speculoos.core exposes a `spec` macro that let you create a `SpecImpl` record.
+;; It works exactly like `clojure.spec.alpha/spec` but wraps the result in a `SpecImpl` instance
+
+;; speculos.core also bring the `cpred` macro which is handy to build coercion specs.
 
 (deftest one
   (is (list :explain :conform :unform :gen :with-gen :describe)

@@ -1,12 +1,11 @@
 (ns speculoos.types-t
-  (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
+  (:require #?(:clj [clojure.spec.alpha :as s] :cljs [cljs.spec.alpha :as s])
+            #?(:clj  [clojure.spec.gen.alpha :as gen] :cljs [cljs.spec.gen.alpha :as gen])
             [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is]]
             [clojure.test :as test #?(:clj :refer :cljs :refer-macros) [deftest]]
-            #?(:clj  [clojure.spec.gen.alpha :as gen]
-               :cljs [cljs.spec.gen.alpha :as gen])
             [speculoos.specs])
   (#?(:clj :require :cljs :require-macros)
-   [speculoos.types :refer [deft]]
+   [speculoos.types :refer [deft defc]]
    [speculoos.specs :refer [cpred]]))
 
 ;; creating a simple type with one field
@@ -36,7 +35,10 @@
 
   (is (s/valid? ::box (box 1)))
 
-  (is (every? box? (gen/sample (s/gen ::box) 1000))))
+  (is (every? box? (gen/sample (s/gen ::box) 1000)))
+
+  ;; a map constructor is defined too (like with defrecord
+  (is (box 1) (map->box {:val 1})))
 
 ;;You can pass protocols implementations as in a `defrecord` form
 
@@ -95,13 +97,23 @@
 (deft t3' [(a ::int)
            (b :- string?)])
 
-(deftest more
+(deftest constructors
+  ;; t2 instantiation (positional constructor
   (is (t2 1 "io")
+      ;; map constructor
       (map->t2 {:a 1 :b "io"}))
-  (is (t2' :a 1 :b "io"))
+  ;; t2' has no positional constructor since it was defined using a map field spec
+  ;; it can be instanciated like this
+  (is (t2' :a 1 :b "io")
+      (map->t2' {:a 1 :b "io"}))
+  ;; t2'' can have a c field or not (if so it has to conform to the keyword? spec
   (is (t2'' :a 1 :b "aze")) ;; c is not here, no problem
   (is (t2'' :a 1 :b "aze" :c :op)) ;; :c is here and validated
+  ;; t3 has a positional constructor and a c field that can be anything (no spec attached)
   (is (t3 1 "io" :anything)))
+
+
+;; coercion ------------------------------------------------------------------
 
 ;;Lets first define a spec `::int!` that will turn any number to an integer.
 
@@ -125,6 +137,30 @@
 
   (is (num2 1)
       (num2 1.1)
-      (num2 1.9))
+      (num2 1.9)))
 
-  )
+;; defc -----------------------------------------------------------------------
+
+;; a simple type with two unvalidated fields (for the exemple)
+(deft fork [a b])
+
+;; defc defines a new type, like deft.
+;; Along with a pattern matched constructor function:
+
+(defc duo [a b] ;; this is the same as deft, a and b are the record fields
+      ;; constructor cases
+      ;; each case returns the fields values
+      [(num x) (num y)] [x y] ;; here x and y will be bound to a and b fields
+      [(fork x _) (fork _ y)] (vector x y)
+      [x y] (list x y)
+      ;; the constructor can have several arities as long as it returns the required fields values
+      [(num x) (num y) z] {:a (+ x y) :b z}
+      [x (num y) (num z)] (assoc {:a x} :b (+ y z)))
+
+(deftest testing-defc
+
+  (is (duo (num 1) (num 2))) ;;=> (duo 1 2)
+  (is (duo (fork :a :b) (fork :c :d))) ;;=> (duo :a :d)
+  (is (duo :what :ever)) ;=> (duo :what :ever)
+  (is (duo (num 1) (num 2) 3)) ;=> (duo 3 3)
+  (is (duo :iop (num 1) (num 2)))) ;=> (duo :iop 3)

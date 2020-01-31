@@ -8,8 +8,6 @@
             [speculoos.specs-t]
             [speculoos.utils-t]))
 
-(println "yop")
-
 (defn -main [& _]
   (run-tests 'speculoos.flow-t
              'speculoos.specs-t

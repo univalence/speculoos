@@ -19,26 +19,16 @@
              :clj  Exception.)
            (apply str xs))))
 
-#?(:clj (defn error-form [& xs]
-          `(throw (new ~(if *cljs?* 'js/Error 'Exception) (~'str ~@xs)))))
-
 #?(:clj
    (do
+     (defn error-form [& xs]
+       `(throw (new ~(if *cljs?* 'js/Error 'Exception) (~'str ~@xs))))
+
      (defmacro is [x & xs]
        `(do (test/is ~x)
             (test/is (~'= ~x ~@xs))))
      (defmacro isnt [x & xs]
        `(test/is (~'= nil ~x ~@xs)))))
-
-#_(defn is [x & xs]
-  (if-not xs
-    (assert x "is nil!")
-    (assert (apply = x xs)
-            (apply str "not equal: " x " " (interpose " " xs)))))
-
-#_(defn isnt [& xs]
-  (assert (every? not xs)
-          (apply str "truthy: " (interpose " " xs))))
 
 (defn gat [xs i]
   (if (>= i 0)
@@ -170,6 +160,19 @@
 
         (defmacro ~(mksym 'def name) [name'# & body#]
           `(def ~name'# (~'~name ~@body#))))))
+
+#?(:clj
+   (defmacro import-defn+ [sym]
+     (let [n (symbol (name sym))
+           ns' (namespace sym)
+           qualified-sym (fn [postfix] (symbol ns' (name (mksym n postfix))))]
+       `(do (def ~n ~sym)
+            (def ~(mksym n "_") ~(qualified-sym "_"))
+            (def ~(mksym n "*") ~(qualified-sym "*"))
+            (def ~(mksym n "_*") ~(qualified-sym "_*"))))))
+
+(macroexpand '(import-defn+ lenses/mut))
+
 
 
 

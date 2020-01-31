@@ -40,9 +40,19 @@
       (> 1 (link pos? dec)) ;; link creates a map-entry
       (> 0 {(l/? pos?) dec}))
 
+  ;; nil is the identity transformation
+  (is 1 (> 1 nil nil))
+
   ;; other values are treated as constant functions
-  (is 42 (> {:some :thing} 42)) ;; here 42 is in transformation position and just return itself
-  (is "yop" (> {:some :thing} "yop"))
+  (is 42
+      (> {:some :thing} 42)) ;; here 42 is in transformation position and just return itself
+
+  (is "yop"
+      (> {:some :thing} "yop"))
+
+  (is {:a {:b 1}}
+      (> {:a {:b "hello"}}
+         {[:a :b] 1})) ;; we are natigating to [:a :b] then apply 1 as a transformation (wich return itself)
 
   ;; the '< function is like an 'or
   ;; like '> it takes the object of the transformation as first argument
@@ -63,6 +73,7 @@
          identity))
 
 
+  ;; several ways to update several things at once in our datastructure
   (is {:a {:b 2 :c -2}}
       (> {:a {:b 1 :c -1}}
          {:a {:b inc :c dec}})
@@ -72,6 +83,7 @@
       (> {:a {:b 1 :c -1}}
          {:a [{:b inc} {:c dec}]}))
 
+  ;; index based manipulation
   (is [1 2 4]
       (> [1 2 3] {2 inc}))
 
@@ -79,20 +91,38 @@
       (> [1 2 [3 4]] {2 {0 inc}})
       (> [1 2 [3 4]] {[2 0] inc}))
 
+  ;; index and keys mixed
   (is [1 2 [{:a 1} 4]]
-      (> [1 2 [{:a 0} 4]] {[2 0 :a] inc}))
+      (> [1 2 [{:a 0} 4]]
+         {[2 0 :a] inc}))
 
+  ;; guarded transformation
   (is {:a {:b 2, :c -2}}
       (> {:a {:b 1 :c -1}}
          {:a {:b inc}
-          [:a :c neg?] dec}))
+          [:a :c neg?] dec})) ;; this part will only update [:a :c] if it passes the neg? predicate
 
+  ;; the same but failing (returning nil
+  (isnt
+    (> {:a {:b 1 :c 1}}
+       {:a {:b inc}
+        [:a :c neg?] dec}))
+
+  ;; maybe you want to update [:a :c] only if its a negative number, and leave it unchanged if not
+  (is {:a {:b 2, :c 1}}
+      (> {:a {:b 1 :c 1}}
+         {:a {:b inc}
+          (l/? [:a :c neg?]) dec})) ;; for this you can use the ? lens
+
+
+  ;; updating non existant key
   (is {:a {:b {:c 42}}}
       (> {}
          (at [:a :b :c] 42))
       (> {}
          {(l/path :a :b :c) 42}))
 
+  ;; at can take several couples
   (is (> {}
          (at [:a :b :c] 42 ;; this assoc 42 at path [:a :b :c]
              :d 'pouet
@@ -130,10 +160,6 @@
       (>* 1 inc dec [inc inc])
       (> 1 (>_ inc inc)))
 
-  (isnt (l/get 1 (l/! neg?))
-        (l/get 1 neg?)
-        (> 1 (link neg? inc)))
-
   (let [t (>_ {neg? inc}
               inc)]
     (is 1 (t -1))
@@ -144,14 +170,4 @@
 
   (is (zero? (> -1 (u/guard neg?) inc)))
 
-
-
-
-  ;; using flow as a spec like mecanism
-
-  (> {:a 1 :b "io" :p 1}
-     {[:a pos?] nil [:b string?] nil})
-
-  (> {:a :1 :b "io" :p 1}
-     {[:a number? pos?] nil
-      [:b string?] nil}))
+)
