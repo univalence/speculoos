@@ -9,6 +9,7 @@ jobs:
     steps:
       - checkout
       - run: sudo apt install nodejs
+      - run: mv /usr/bin/nodejs /usr/bin/node
       - run : ./.circleci/install-maven
       - restore_cache:
           keys:
