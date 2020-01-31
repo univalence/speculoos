@@ -42,7 +42,7 @@
 
 #?(:clj (do (deft myfun [f]
                   clojure.lang.IFn
-                  ([this x] ((:f this) x)))
+                  (invoke [this x] ((:f this) x)))
 
             (deftest impls
               (is 1 ((myfun identity) 1)))))
