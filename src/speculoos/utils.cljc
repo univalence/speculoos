@@ -1,7 +1,8 @@
 (ns speculoos.utils
   (:require
     [clojure.string :as str]
-    [#?(:cljs cljs.test :clj clojure.test) :as test]
+    [clojure.test]
+    [cljs.test]
     [clojure.walk :refer [postwalk]]
     #?(:clj [speculoos.state :refer [*cljs?*]])
     [#?(:cljs cljs.pprint :clj clojure.pprint) :as pp]))

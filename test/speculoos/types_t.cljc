@@ -2,7 +2,8 @@
   (:require #?(:clj [clojure.spec.alpha :as s] :cljs [cljs.spec.alpha :as s])
             #?(:clj  [clojure.spec.gen.alpha :as gen] :cljs [cljs.spec.gen.alpha :as gen])
             [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is]]
-            [clojure.test :as test #?(:clj :refer :cljs :refer-macros) [deftest]]
+            #?(:clj  [clojure.test :refer [deftest]]
+               :cljs [cljs.test :refer-macros [deftest]])
             [speculoos.specs])
   (#?(:clj :require :cljs :require-macros)
    [speculoos.types :refer [deft defc]]

@@ -1,7 +1,8 @@
 (ns speculoos.patterns-t
   (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
             #?(:cljs [cljs.core.match] :clj [clojure.core.match])
-            [clojure.test :as test #?(:clj :refer :cljs :refer-macros) [deftest]]
+            #?(:clj  [clojure.test :refer [deftest]]
+               :cljs [cljs.test :refer-macros [deftest]])
             [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is]]
             [speculoos.specs])
   (#?(:clj :require :cljs :require-macros)

@@ -1,6 +1,7 @@
 (ns speculoos.lenses-t
   (:refer-clojure :exclude [get <])
-  (:require [clojure.test #?(:clj :refer :cljs :refer-macros) [deftest]]
+  (:require #?(:clj  [clojure.test :refer [deftest]]
+               :cljs [cljs.test :refer-macros [deftest]])
             [speculoos.utils #?(:clj :refer :cljs :refer-macros) [is isnt]]
             [speculoos.lenses :as l :refer [get put mut mut< < path pass ? convertion #?(:clj lfn)] #?@(:cljs [:refer-macros [lfn]])]))
 
