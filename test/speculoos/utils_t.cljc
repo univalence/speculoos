@@ -1,5 +1,5 @@
 (ns speculoos.utils-t
-  (:require [clojure.test :as tests :refer [deftest]]
+  (:require [#?(:cljs cljs.test :clj clojure.test) :as tests #?(:clj :refer :cljs :refer-macros) [deftest]]
             [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is isnt f_ f1]]))
 
 (deftest maps

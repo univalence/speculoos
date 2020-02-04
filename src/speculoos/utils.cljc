@@ -1,7 +1,7 @@
 (ns speculoos.utils
   (:require
     [clojure.string :as str]
-    [clojure.test :as test]
+    [#?(:cljs cljs.test :clj clojure.test) :as test]
     [clojure.walk :refer [postwalk]]
     #?(:clj [speculoos.state :refer [*cljs?*]])
     [#?(:cljs cljs.pprint :clj clojure.pprint) :as pp]))
@@ -171,7 +171,6 @@
             (def ~(mksym n "*") ~(qualified-sym "*"))
             (def ~(mksym n "_*") ~(qualified-sym "_*"))))))
 
-(macroexpand '(import-defn+ lenses/mut))
 
 
 

@@ -1,7 +1,8 @@
 (ns speculoos.tut
   (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
-            [speculoos.utils :as u :refer [is]])
+            #_[speculoos.utils :as u :refer [is]])
   (#?(:clj :require :cljs :require-macros)
+   [speculoos.utils :as u :refer [is]]
    [speculoos.core :refer [defc deft fm defm defspec spec cpred]]))
 
 ;; defining a simple type
