@@ -25,10 +25,16 @@
        `(throw (new ~(if *cljs?* 'js/Error 'Exception) (~'str ~@xs))))
 
      (defmacro is [x & xs]
-       `(do (test/is ~x)
-            (test/is (~'= ~x ~@xs))))
+       (if (:ns &env)
+         `(do (cljs.test/is ~x)
+              (cljs.test/is (~'= ~x ~@xs)))
+         `(do (clojure.test/is ~x)
+              (clojure.test/is (~'= ~x ~@xs)))))
+
      (defmacro isnt [x & xs]
-       `(test/is (~'= nil ~x ~@xs)))))
+       (if (:ns &env)
+         `(cljs.test/is (~'= nil ~x ~@xs))
+         `(clojure.test/is (~'= nil ~x ~@xs))))))
 
 (defn gat [xs i]
   (if (>= i 0)
