@@ -269,7 +269,7 @@
                               lpat))]
                       [(conj blpat lpat') (wrap-return expr)]))]
 
-              (binding [*cljs?* (or *cljs?* (:ns &env) true)]
+              (binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
 
                 (when variadic-arity
 
