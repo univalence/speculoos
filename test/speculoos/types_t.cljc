@@ -1,6 +1,6 @@
 (ns speculoos.types-t
   (:require #?(:clj [clojure.spec.alpha :as s] :cljs [cljs.spec.alpha :as s])
-            #?(:clj  [clojure.spec.gen.alpha :as gen] :cljs [cljs.spec.gen.alpha :as gen])
+            #?(:clj [clojure.spec.gen.alpha :as gen] :cljs [cljs.spec.gen.alpha :as gen])
             [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is]]
             #?(:clj  [clojure.test :refer [deftest]]
                :cljs [cljs.test :refer-macros [deftest]])
@@ -13,33 +13,34 @@
 
 (deft box [val])
 
-(deftest one
+(u/with-dotsyms
+  (deftest one
 
-  ;; It can be instanciated like this
+    ;; It can be instanciated like this
 
-  (is (box 1)) ;;=> (box 1)
+    (is (box 1)) ;;=> (box 1)
 
-  ;; It prints in a more concise way than default clojure record e.g =(box 1)=
+    ;; It prints in a more concise way than default clojure record e.g =(box 1)=
 
-  ;; We can access its field with normal clojure syntax.
+    ;; We can access its field with normal clojure syntax.
 
-  (is (:val (box 1))) ;;=> 1
+    (is (:val (box 1))) ;;=> 1
 
-  ;; A predicate is available too
+    ;; A predicate is available too
 
-  (is (box? (box 1))) ;;=> true
+    (is (box? (box 1))) ;;=> true
 
-  ;; the ::box spec is defined too
+    ;; the ::box spec is defined too
 
-  (is (s/conform ::box {:val 1})
-      (box 1))
+    (is (s/conform ::box {:val 1})
+        (box 1))
 
-  (is (s/valid? ::box (box 1)))
+    (is (s/valid? ::box (box 1)))
 
-  (is (every? box? (gen/sample (s/gen ::box) 1000)))
+    (is (every? box? (gen/sample (s/gen ::box) 1000)))
 
-  ;; a map constructor is defined too (like with defrecord
-  (is (box 1) (map->box {:val 1})))
+    ;; a map constructor is defined too (like with defrecord
+    (is (box 1) (box.from-map {:val 1}))))
 
 ;;You can pass protocols implementations as in a `defrecord` form
 
@@ -98,20 +99,21 @@
 (deft t3' [(a ::int)
            (b :- string?)])
 
-(deftest constructors
-  ;; t2 instantiation (positional constructor
-  (is (t2 1 "io")
-      ;; map constructor
-      (map->t2 {:a 1 :b "io"}))
-  ;; t2' has no positional constructor since it was defined using a map field spec
-  ;; it can be instanciated like this
-  (is (t2' :a 1 :b "io")
-      (map->t2' {:a 1 :b "io"}))
-  ;; t2'' can have a c field or not (if so it has to conform to the keyword? spec
-  (is (t2'' :a 1 :b "aze")) ;; c is not here, no problem
-  (is (t2'' :a 1 :b "aze" :c :op)) ;; :c is here and validated
-  ;; t3 has a positional constructor and a c field that can be anything (no spec attached)
-  (is (t3 1 "io" :anything)))
+(u/with-dotsyms
+  (deftest constructors
+    ;; t2 instantiation (positional constructor
+    (is (t2 1 "io")
+        ;; map constructor
+        (t2.from-map {:a 1 :b "io"}))
+    ;; t2' has no positional constructor since it was defined using a map field spec
+    ;; it can be instanciated like this
+    (is (t2' :a 1 :b "io")
+        (t2'.from-map {:a 1 :b "io"}))
+    ;; t2'' can have a c field or not (if so it has to conform to the keyword? spec
+    (is (t2'' :a 1 :b "aze")) ;; c is not here, no problem
+    (is (t2'' :a 1 :b "aze" :c :op)) ;; :c is here and validated
+    ;; t3 has a positional constructor and a c field that can be anything (no spec attached)
+    (is (t3 1 "io" :anything))))
 
 
 ;; coercion ------------------------------------------------------------------

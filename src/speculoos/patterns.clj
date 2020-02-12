@@ -29,8 +29,12 @@
           (u/predicate-symbol? (first xs)) ::pred
           :else ::m/seq)))
 
-    (defmethod m/emit-pattern ::type [[c & ms]]
+    #_(defmethod m/emit-pattern ::type [[c & ms]]
       (m/emit-pattern (list (zipmap (->> (state/registered-type? c) :fields (map keyword)) ms)
+                            :guard `(fn [x#] (~(u/mksym c "?") x#)))))
+
+    (defmethod m/emit-pattern ::type [[c & ms]]
+      (m/emit-pattern (list (zipmap (->> (state/registered-type? c) :fields-names (map keyword)) ms)
                             :guard `(fn [x#] (~(u/mksym c "?") x#)))))
 
     (defmethod m/emit-pattern ::pred [[c x]]

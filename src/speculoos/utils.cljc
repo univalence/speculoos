@@ -1,10 +1,12 @@
 (ns speculoos.utils
+  (:refer-clojure :exclude [#?(:cljs object?) empty])
   (:require
     [clojure.string :as str]
     [clojure.test]
     [cljs.test]
     [clojure.walk :refer [postwalk]]
     #?(:clj [speculoos.state :refer [*cljs?*]])
+    [#?(:clj clojure.core :cljs cljs.core) :as c]
     [#?(:cljs cljs.pprint :clj clojure.pprint) :as pp]))
 
 (defn pp [& xs]
@@ -84,6 +86,38 @@
     ([x y] (when (f x y) x))
     ([x y z] (when (f x y z) x))
     ([x y z & others] (when (apply f x y z others) x))))
+
+;; collections
+
+(defn empty [x]
+  (condp #(%1 %2) x
+    record? (apply dissoc x (keys x))
+    map-entry? []
+    (c/empty x)))
+
+(defn $fn [ffn]
+  (fn [x f]
+    (if (seq? x)
+      (ffn f x)
+      (into (empty x) (ffn f x)))))
+
+(def shrink+ ($fn filter))
+(def shrink- ($fn remove))
+(def $! ($fn keep))
+(def $ ($fn map))
+
+(defn $vals [x f]
+  ($ x (fn [[k v]] [k (f v)])))
+
+(defn $keys [x f]
+  ($ x (fn [[k v]] [(f k) v])))
+
+(defn walk? [x node? f]
+  (if (node? x)
+    ($ x #(walk? % node? f))
+    (f x)))
+
+;; macros
 
 #?(:clj
    (do
@@ -177,6 +211,94 @@
             (def ~(mksym n "_") ~(qualified-sym "_"))
             (def ~(mksym n "*") ~(qualified-sym "*"))
             (def ~(mksym n "_*") ~(qualified-sym "_*"))))))
+
+(defn dotsplit [x]
+  (when (word? x)
+    (str/split (name x) #"\.")))
+
+(defn dotjoin
+  ([xs]
+   (symbol (str/join "." (map name xs))))
+  ([x & xs]
+   (dotjoin (remove nil? (flatten (cons x xs))))))
+
+#?(:clj
+   (defmacro dof [n v]
+     (let [ss (dotsplit n)
+           ns-str (str *ns*)
+           ns-sym (symbol ns-str)]
+       (if-not (or (namespace n) (next ss))
+         `(def ~n ~v) ;; trivial case
+         (if (:ns &env)
+           (loop [ss ss ctx [] ret [`(declare ~(symbol (first ss)))]]
+             (if-not (seq ss)
+               (list* 'do ret)
+               (let [head (first ss)
+                     head-sym (symbol head)
+                     ctx (conj ctx head)
+                     varsym (dotjoin ctx)]
+                 (recur (next ss) ctx
+                        (conj ret `(set! ~varsym ~(if-not (next ss) v `(or ~varsym ::object))))))))
+           (let [ns-prefix (or (some-> n namespace symbol) (dotjoin (butlast ss)))
+                 sub-ns-sym (dotjoin [ns-str ns-prefix])
+                 varsym (symbol (last ss))]
+             `(do
+                (~'ns ~sub-ns-sym
+                  (:refer-clojure :exclude ~(doall (cons varsym (when (find-ns sub-ns-sym) (keys (ns-publics (the-ns sub-ns-sym)))))))
+                  (:use ~ns-sym))
+                (def ~varsym ~v)
+                (~'in-ns '~ns-sym)
+                (require '[~sub-ns-sym :as ~(symbol ns-prefix)]))))))))
+
+(defn dof-form? [x]
+  (and (seq? x)
+       (symbol? (first x))
+       (= "dof" (name (first x)))))
+
+(defn dotsym? [x]
+  (and (symbol? x)
+       (let [ss (str/split (name x) #"\.")]
+         (and (seq (next ss))
+              (every? #(not (re-matches #"^[A-Z].*" %)) ss)))))
+
+(defn dotsym->qualified-sym [x]
+  (let [ss (str/split (name x) #"\.")]
+    (symbol (str/join "." (butlast ss)) (last ss))))
+
+#?(:clj (defmacro with-dotsyms [& body]
+          (if (:ns &env)
+            `(do ~@body) ;;in clojurescript we do nothing
+            (letfn [(walk [body]
+                      (walk? body
+                             ;; node?
+                             (fn [x] (and (not (dof-form? x)) (coll? x)))
+                             ;; leaf transform
+                             (fn [x] (cond (dof-form? x) (concat (take 2 x) (walk (drop 2 x)))
+                                           (dotsym? x) (dotsym->qualified-sym x)
+                                           :else x))))]
+              `(do ~@(walk body))))))
+
+#?(:cljs (defn object? [x]
+           (= ::object x)))
+
+#_(clojure.walk/macroexpand-all '(with-dotsyms
+                                 (+ a m.k.l)
+                                 clojure.lang.String
+                                 (def r {p.l poi.mlk})
+                                 (dof r.l.p {p.l poi.mlk})))
+
+#_(macroexpand '(dof a.b.c 12))
+
+#_(dof a.b.c 12)
+
+#_(do *ns*)
+
+(defmacro dofn [name & body]
+  (let [fn-body (if (string? (first body)) (next body) body)]
+    `(dof ~name (fn ~@body))))
+
+
+
 
 
 
