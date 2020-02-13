@@ -63,15 +63,15 @@
        vec))
 
 (defn positional-constructor-form [constr-sym parsed-fields]
-  (println "posconstrform" constr-sym)
+  #_(println "posconstrform" constr-sym)
   (let [syms (mapv :sym parsed-fields)]
     `(fn ~syms
        (let ~(binding-form parsed-fields)
-         (~constr-sym #_~(if *cljs?* constr-sym (u/dotsym->qualified-sym constr-sym)) ~@syms)))))
+         (~constr-sym ~@syms)))))
 
 (defn map-constructor-form [constr-sym parsed-fields]
 
-  (println "mapconstrform" constr-sym)
+  #_(println "mapconstrform" constr-sym)
   (let [s (gensym)
         syms (mapv :sym parsed-fields)
         req-syms (mapv :sym (remove :optional parsed-fields))
@@ -80,130 +80,130 @@
         opt-ks (map (comp keyword name) opt-syms)]
     `(fn [{:keys ~syms :as ~s}]
        (let ~(binding-form parsed-fields)
-         (~constr-sym #_~(if *cljs?* constr-sym (u/dotsym->qualified-sym constr-sym))
+         (~constr-sym
            (merge ~s
                   ~(zipmap req-ks req-syms)
                   (u/rem-nil-vals ~(zipmap opt-ks opt-syms))))))))
 
 (defn unpositional-constructor-form [constr-sym]
-  (println "unposconstrform" constr-sym)
-  `(fn [& xs#] (~constr-sym #_~(if *cljs?* constr-sym (u/dotsym->qualified-sym constr-sym)) (apply hash-map xs#))))
+  #_(println "unposconstrform" constr-sym)
+  `(fn [& xs#] (~constr-sym (apply hash-map xs#))))
 
 ;; macros -------------------------------------------------------------------------------------
 
 #_(defmacro deft
-  [n fields & body]
+    [n fields & body]
 
-  (binding [*cljs?* (boolean (:ns &env))]
+    (binding [*cljs?* (boolean (:ns &env))]
 
-    (let [;; fields
-          positional? (vector? fields)
-          parsed-fields (parse-fields fields)
-          req-fields (remove :optional parsed-fields)
-          opt-fields (filter :optional parsed-fields)
-          fields-names (mapv :sym parsed-fields)
-          req-fields-names (mapv :sym req-fields)
+      (let [;; fields
+            positional? (vector? fields)
+            parsed-fields (parse-fields fields)
+            req-fields (remove :optional parsed-fields)
+            opt-fields (filter :optional parsed-fields)
+            fields-names (mapv :sym parsed-fields)
+            req-fields-names (mapv :sym req-fields)
 
-          ;; symbols
-          record-sym (u/name->class-symbol n)
-          map-constr-sym (u/mksym 'map-> n)
-          map-builtin-constr-sym (u/mksym 'map-> record-sym)
-          predsym (u/mksym n "?")
-          pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)
+            ;; symbols
+            record-sym (u/name->class-symbol n)
+            map-constr-sym (u/mksym 'map-> n)
+            map-builtin-constr-sym (u/mksym 'map-> record-sym)
+            predsym (u/mksym n "?")
+            pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)
 
-          ;; sub specs
-          spec-keyword (keyword (str *ns*) (name n))
-          sub-spec-form
-          (fn [{:as field :keys [sym spec]}]
-            (when-not (sub-type-field? field)
-              `(~(ss/spec-sym "def")
-                 ~(keyword (str *ns* "." n) (str sym))
-                 ~(or spec `any?))))
-          sub-specs (keep sub-spec-form req-fields)
-          optional-sub-specs (keep sub-spec-form opt-fields)]
+            ;; sub specs
+            spec-keyword (keyword (str *ns*) (name n))
+            sub-spec-form
+            (fn [{:as field :keys [sym spec]}]
+              (when-not (sub-type-field? field)
+                `(~(ss/spec-sym "def")
+                   ~(keyword (str *ns* "." n) (str sym))
+                   ~(or spec `any?))))
+            sub-specs (keep sub-spec-form req-fields)
+            optional-sub-specs (keep sub-spec-form opt-fields)]
 
 
 
-      (state/register-type! n {:record-symbol record-sym
-                               :map-constructor-symbol map-constr-sym
-                               :predicate-symbol predsym
-                               :spec-keyword spec-keyword
-                               :fields fields-names})
+        (state/register-type! n {:record-symbol record-sym
+                                 :map-constructor-symbol map-constr-sym
+                                 :predicate-symbol predsym
+                                 :spec-keyword spec-keyword
+                                 :fields fields-names})
 
-      `(do (declare ~n ~predsym ~map-constr-sym ~map-builtin-constr-sym)
+        `(do (declare ~n ~predsym ~map-constr-sym ~map-builtin-constr-sym)
 
-           ;; specs
-           (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
+             ;; specs
+             (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
 
-           ~@sub-specs ~@optional-sub-specs ;; fields specs
-           (~(ss/spec-sym "def") ~spec-keyword
-             (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys")
-                                      :req-un ~(mapv second sub-specs)
-                                      :opt-un ~(mapv second optional-sub-specs)))
-                 ;; wrapping the generator and the conformer
-                 (update :gen
-                         #(fn [& xs#]
-                            (tcg/fmap ~map-builtin-constr-sym
-                                      (apply % xs#))))
-                 (update :conform
-                         #(fn [s# x#]
-                            (let [ret# (% s# x#)]
-                              (if (~(ss/spec-sym "invalid?") ret#)
-                                ret#
-                                (~map-builtin-constr-sym ret#)))))))
+             ~@sub-specs ~@optional-sub-specs ;; fields specs
+             (~(ss/spec-sym "def") ~spec-keyword
+               (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys")
+                                        :req-un ~(mapv second sub-specs)
+                                        :opt-un ~(mapv second optional-sub-specs)))
+                   ;; wrapping the generator and the conformer
+                   (update :gen
+                           #(fn [& xs#]
+                              (tcg/fmap ~map-builtin-constr-sym
+                                        (apply % xs#))))
+                   (update :conform
+                           #(fn [s# x#]
+                              (let [ret# (% s# x#)]
+                                (if (~(ss/spec-sym "invalid?") ret#)
+                                  ret#
+                                  (~map-builtin-constr-sym ret#)))))))
 
-           ;; record declaration
-           (defrecord ~record-sym ~req-fields-names ~@body)
+             ;; record declaration
+             (defrecord ~record-sym ~req-fields-names ~@body)
 
-           ;; constructors
-           ~(if positional?
-              `(def ~n ~(positional-constructor-form (u/mksym '-> record-sym) parsed-fields))
-              `(def ~n ~(unpositional-constructor-form map-constr-sym)))
+             ;; constructors
+             ~(if positional?
+                `(def ~n ~(positional-constructor-form (u/mksym '-> record-sym) parsed-fields))
+                `(def ~n ~(unpositional-constructor-form map-constr-sym)))
 
-           (def ~map-constr-sym ~(map-constructor-form map-builtin-constr-sym parsed-fields))
+             (def ~map-constr-sym ~(map-constructor-form map-builtin-constr-sym parsed-fields))
 
-           ;; predicate
-           (def ~predsym (fn [x#] (instance? ~record-sym x#)))
+             ;; predicate
+             (def ~predsym (fn [x#] (instance? ~record-sym x#)))
 
-           ;; printing
-           (defmethod ~pprint-sd-sym
-             ~record-sym [x#]
-             (~pprint-sd-sym (cons '~n (map (partial get x#) ~(mapv keyword fields-names)))))
+             ;; printing
+             (defmethod ~pprint-sd-sym
+               ~record-sym [x#]
+               (~pprint-sd-sym (cons '~n (map (partial get x#) ~(mapv keyword fields-names)))))
 
-           ~(if positional?
+             ~(if positional?
 
-              (if *cljs?*
+                (if *cljs?*
 
-                `(extend-protocol cljs.core/IPrintWithWriter
-                   ~record-sym
-                   (cljs.core/-pr-writer [x# w# _#]
+                  `(extend-protocol cljs.core/IPrintWithWriter
+                     ~record-sym
+                     (cljs.core/-pr-writer [x# w# _#]
+                       (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
+                         (cljs.core/write-all
+                           w# (if (seq extra-keys#)
+                                (cons '~n (mapcat identity x#))
+                                (cons '~n (map (partial get x#) ~(mapv keyword fields-names))))))))
+
+                  `(defmethod print-method
+                     ~record-sym [x# w#]
                      (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
-                       (cljs.core/write-all
-                         w# (if (seq extra-keys#)
-                              (cons '~n (mapcat identity x#))
-                              (cons '~n (map (partial get x#) ~(mapv keyword fields-names))))))))
+                       (print-method
+                         (if (seq extra-keys#)
+                           (cons '~n (mapcat identity x#))
+                           (cons '~n (map (partial get x#) ~(mapv keyword fields-names))))
+                         w#))))
 
-                `(defmethod print-method
-                   ~record-sym [x# w#]
-                   (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
-                     (print-method
-                       (if (seq extra-keys#)
-                         (cons '~n (mapcat identity x#))
-                         (cons '~n (map (partial get x#) ~(mapv keyword fields-names))))
-                       w#))))
+                (if *cljs?*
 
-              (if *cljs?*
+                  `(extend-protocol cljs.core/IPrintWithWriter
+                     ~record-sym
+                     (cljs.core/-pr-writer [x# w# _#]
+                       (cljs.core/write-all w# (cons '~n (mapcat identity x#)))))
 
-                `(extend-protocol cljs.core/IPrintWithWriter
-                   ~record-sym
-                   (cljs.core/-pr-writer [x# w# _#]
-                     (cljs.core/write-all w# (cons '~n (mapcat identity x#)))))
+                  `(defmethod print-method
+                     ~record-sym [x# w#]
+                     (print-method (cons '~n (mapcat identity x#)) w#))))
 
-                `(defmethod print-method
-                   ~record-sym [x# w#]
-                   (print-method (cons '~n (mapcat identity x#)) w#))))
-
-           ))))
+             ))))
 
 (do :deft-new
 
@@ -252,6 +252,7 @@
          ;; function syms
          :predicate-sym (u/mksym fullname "?")
          :record-sym record-sym
+         :builtin-positional-constructor-sym (u/mksym '-> record-sym)
          :builtin-map-constructor-sym (u/mksym 'map-> record-sym)
          :map-constructor-sym (u/dotjoin fullname 'from-map)
          ;; fields
@@ -263,11 +264,15 @@
          :positional positional? :alias alias?
          :body body :subs subs}))
 
-    #_(clojure.pprint/pprint (parse-deft '[iop {a [b c] b number? c {d integer? e [f g]}}]))
-
+    (clojure.pprint/pprint (parse-deft '[iop {a [b c] b number? c {d integer? e [f g]}}]))
+    (parse-deft '(t4 {a [b c]
+                      b {c integer?
+                         d string?
+                         e [f :- number?]}}))
     (defn emit-deft
       [{:as parsed
-        :keys [ns ns-str name name-str
+        ns' :ns
+        :keys [ns-str name name-str
                fullname spec-keyword
                fields fields-names
                req-fields req-fields-names req-fields-specs
@@ -275,10 +280,10 @@
                body spec subs
                alias positional
                record-sym predicate-sym
-               map-constructor-sym builtin-map-constructor-sym]}]
+               map-constructor-sym builtin-map-constructor-sym
+               builtin-positional-constructor-sym]}]
 
-
-
+      ;; TODO, hide core redefs warnings
       (if spec
 
         `(u/with-dotsyms
@@ -290,83 +295,87 @@
 
           (state/register-type! name parsed)
 
-          `(do (declare ~fullname ~predicate-sym ~builtin-map-constructor-sym)
+          `(do ;(ns-unmap '~ns '~fullname)
+             ;(ns-unmap '~ns '~predicate-sym)
+             ;~(when-not *cljs?* `(ns ~ns' (:refer-clojure :exclude [~fullname ~predicate-sym])))
 
-               ;; specs
-               (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
+             (declare ~fullname ~predicate-sym ~builtin-map-constructor-sym)
 
-               ~@(mapv emit-deft subs)
+             ;; specs
+             (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
 
-               ;~@sub-specs ~@optional-sub-specs ;; fields specs
-               (~(ss/spec-sym "def") ~spec-keyword
-                 (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys")
-                                          :req-un ~req-fields-specs
-                                          :opt-un ~opt-fields-specs))
-                     ;; wrapping the generator and the conformer
-                     (update :gen
-                             #(fn [& xs#]
-                                (tcg/fmap ~builtin-map-constructor-sym
-                                          (apply % xs#))))
-                     (update :conform
-                             #(fn [s# x#]
-                                (let [ret# (% s# x#)]
-                                  (if (~(ss/spec-sym "invalid?") ret#)
-                                    ret#
-                                    (~builtin-map-constructor-sym ret#)))))))
+             ~@(mapv emit-deft subs)
 
-               ;; record declaration
-               (defrecord ~record-sym ~req-fields-names ~@body)
+             ;~@sub-specs ~@optional-sub-specs ;; fields specs
+             (~(ss/spec-sym "def") ~spec-keyword
+               (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys")
+                                        :req-un ~req-fields-specs
+                                        :opt-un ~opt-fields-specs))
+                   ;; wrapping the generator and the conformer
+                   (update :gen
+                           #(fn [& xs#]
+                              (tcg/fmap ~builtin-map-constructor-sym
+                                        (apply % xs#))))
+                   (update :conform
+                           #(fn [s# x#]
+                              (let [ret# (% s# x#)]
+                                (if (~(ss/spec-sym "invalid?") ret#)
+                                  ret#
+                                  (~builtin-map-constructor-sym ret#)))))))
 
-               (u/dof ~map-constructor-sym ~(map-constructor-form builtin-map-constructor-sym fields))
+             ;; record declaration
+             (u/defr ~record-sym ~req-fields-names ~@body)
 
-               ;; constructors
-               ~(if positional
-                  `(u/dof ~fullname ~(positional-constructor-form (u/mksym '-> record-sym) fields))
-                  `(u/dof ~fullname ~(unpositional-constructor-form
-                                       (if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym)))))
+             (u/dof ~map-constructor-sym ~(map-constructor-form builtin-map-constructor-sym fields))
 
-               ;; predicate
-               (u/dof ~predicate-sym (fn [x#] (instance? ~record-sym x#)))
+             ;; constructors
+             ~(if positional
+                `(u/dof ~fullname ~(positional-constructor-form builtin-positional-constructor-sym fields))
+                `(u/dof ~fullname ~(unpositional-constructor-form
+                                     (if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym)))))
 
-               ;; printing
-               (defmethod ~pprint-sd-sym
-                 ~record-sym [x#]
-                 (~pprint-sd-sym (cons '~name (map (partial get x#) ~(mapv keyword fields-names)))))
+             ;; predicate
+             (u/dof ~predicate-sym (fn [x#] (~(u/mksym record-sym "?") x#)))
 
-               ~(if positional
+             ;; printing
+             (defmethod ~pprint-sd-sym
+               ~record-sym [x#]
+               (~pprint-sd-sym (cons '~name (map (partial get x#) ~(mapv keyword fields-names)))))
 
-                  (if *cljs?*
+             ~(if positional
 
-                    `(extend-protocol cljs.core/IPrintWithWriter
-                       ~record-sym
-                       (cljs.core/-pr-writer [x# w# _#]
-                         (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
-                           (cljs.core/write-all
-                             w# (if (seq extra-keys#)
-                                  (cons '~name (mapcat identity x#))
-                                  (cons '~name (map (partial get x#) ~(mapv keyword fields-names))))))))
+                (if *cljs?*
 
-                    `(defmethod print-method
-                       ~record-sym [x# w#]
+                  `(extend-protocol cljs.core/IPrintWithWriter
+                     ~record-sym
+                     (cljs.core/-pr-writer [x# w# _#]
                        (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
-                         (print-method
-                           (if (seq extra-keys#)
-                             (cons '~fullname (mapcat identity x#))
-                             (cons '~fullname (map (partial get x#) ~(mapv keyword fields-names))))
-                           w#))))
+                         (cljs.core/write-all
+                           w# (if (seq extra-keys#)
+                                (cons '~name (mapcat identity x#))
+                                (cons '~name (map (partial get x#) ~(mapv keyword fields-names))))))))
 
-                  (if *cljs?*
+                  `(defmethod print-method
+                     ~record-sym [x# w#]
+                     (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
+                       (print-method
+                         (if (seq extra-keys#)
+                           (cons '~fullname (mapcat identity x#))
+                           (cons '~fullname (map (partial get x#) ~(mapv keyword fields-names))))
+                         w#))))
 
-                    `(extend-protocol cljs.core/IPrintWithWriter
-                       ~record-sym
-                       (cljs.core/-pr-writer [x# w# _#]
-                         (cljs.core/write-all w# (cons '~fullname (mapcat identity x#)))))
+                (if *cljs?*
 
-                    `(defmethod print-method
-                       ~record-sym [x# w#]
-                       (print-method (cons '~fullname (mapcat identity x#)) w#))))
+                  `(extend-protocol cljs.core/IPrintWithWriter
+                     ~record-sym
+                     (cljs.core/-pr-writer [x# w# _#]
+                       (cljs.core/write-all w# (cons '~fullname (mapcat identity x#)))))
 
-               ))))
+                  `(defmethod print-method
+                     ~record-sym [x# w#]
+                     (print-method (cons '~fullname (mapcat identity x#)) w#))))
+
+             ))))
 
     (defmacro deft
       [& body]
@@ -381,6 +390,11 @@
          (require '[speculoos.types.box :as box])
          (box/val 1)
          (box 1)
+
+         (macroexpand '(deft t4 {a [b c]
+                                 b {c integer?
+                                    d string?
+                                    e [f :- number?]}}))
 
          (require '[clojure.spec.alpha :as s]) (s/conform ::box {:val 1}))
 

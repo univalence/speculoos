@@ -142,6 +142,10 @@
       (num2 1.1)
       (num2 1.9)))
 
+;; nested types
+
+(macroexpand '(deft t4 {a [b c] b {c ::int! d string? e [f ::int]}}))
+
 ;; defc -----------------------------------------------------------------------
 
 ;; a simple type with two unvalidated fields (for the exemple)

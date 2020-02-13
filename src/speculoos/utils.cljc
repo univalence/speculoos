@@ -223,32 +223,37 @@
    (dotjoin (remove nil? (flatten (cons x xs))))))
 
 #?(:clj
-   (defmacro dof [n v]
-     (let [ss (dotsplit n)
-           ns-str (str *ns*)
-           ns-sym (symbol ns-str)]
-       (if-not (or (namespace n) (next ss))
-         `(def ~n ~v) ;; trivial case
-         (if (:ns &env)
-           (loop [ss ss ctx [] ret [`(declare ~(symbol (first ss)))]]
-             (if-not (seq ss)
-               (list* 'do ret)
-               (let [head (first ss)
-                     head-sym (symbol head)
-                     ctx (conj ctx head)
-                     varsym (dotjoin ctx)]
-                 (recur (next ss) ctx
-                        (conj ret `(set! ~varsym ~(if-not (next ss) v `(or ~varsym ::object))))))))
-           (let [ns-prefix (or (some-> n namespace symbol) (dotjoin (butlast ss)))
-                 sub-ns-sym (dotjoin [ns-str ns-prefix])
-                 varsym (symbol (last ss))]
-             `(do
-                (~'ns ~sub-ns-sym
-                  (:refer-clojure :exclude ~(doall (cons varsym (when (find-ns sub-ns-sym) (keys (ns-publics (the-ns sub-ns-sym)))))))
-                  (:use ~ns-sym))
-                (def ~varsym ~v)
-                (~'in-ns '~ns-sym)
-                (require '[~sub-ns-sym :as ~(symbol ns-prefix)]))))))))
+   (defmacro dof
+     ;; TODO handle core redef warnings
+     ([n] `(dof ~n nil))
+     ([n v]
+      (let [ss (dotsplit n)
+            ns-str (str *ns*)
+            ns-sym (symbol ns-str)]
+        (if-not (or (namespace n) (next ss))
+          `(def ~n ~v) ;; trivial case
+          (if (:ns &env)
+            (loop [ss ss ctx [] ret [`(declare ~(symbol (first ss)))]]
+              (if-not (seq ss)
+                (list* 'do ret)
+                (let [head (first ss)
+                      head-sym (symbol head)
+                      ctx (conj ctx head)
+                      varsym (dotjoin ctx)]
+                  (recur (next ss) ctx
+                         (conj ret `(set! ~varsym ~(if-not (next ss) v `(or ~varsym ::object))))))))
+            (let [ns-prefix (or (some-> n namespace symbol) (dotjoin (butlast ss)))
+                  sub-ns-sym (dotjoin [ns-str ns-prefix])
+                  varsym (symbol (last ss))]
+              ((if (= 'num varsym)
+                 prob identity)
+               `(do
+                  (~'ns ~sub-ns-sym
+                    (:refer-clojure :exclude ~(doall (cons varsym (when (find-ns sub-ns-sym) (keys (ns-publics (the-ns sub-ns-sym)))))))
+                    (:require [~ns-sym :refer :all]))
+                  (def ~varsym ~v)
+                  (~'in-ns '~ns-sym)
+                  (require '[~sub-ns-sym :as ~(symbol ns-prefix)]))))))))))
 
 (defn dof-form? [x]
   (and (seq? x)
@@ -282,10 +287,10 @@
            (= ::object x)))
 
 #_(clojure.walk/macroexpand-all '(with-dotsyms
-                                 (+ a m.k.l)
-                                 clojure.lang.String
-                                 (def r {p.l poi.mlk})
-                                 (dof r.l.p {p.l poi.mlk})))
+                                   (+ a m.k.l)
+                                   clojure.lang.String
+                                   (def r {p.l poi.mlk})
+                                   (dof r.l.p {p.l poi.mlk})))
 
 #_(macroexpand '(dof a.b.c 12))
 
@@ -297,10 +302,11 @@
   (let [fn-body (if (string? (first body)) (next body) body)]
     `(dof ~name (fn ~@body))))
 
-
-
-
-
+(defmacro defr
+  "thin wrapper around defrecord that simply defines a predicate, in order to not have to import the class"
+  [n & body]
+  `(do (defrecord ~n ~@body)
+       (defn ~(mksym n "?") [x#] (instance? ~n x#))))
 
 
 
