@@ -53,157 +53,58 @@
         :else
         (recur (conj ret {:sym (first seed)}) (rest seed))))))
 
-(defn binding-form [parsed-fields]
-  (->> parsed-fields
-       (mapcat (fn [{:keys [spec sym optional]}]
-                 (when spec
-                   [sym (ss/conformer-strict-form
-                          (if optional (list (ss/spec-sym "nilable") spec) spec) sym
-                          (u/error-form `(~'pr-str ~sym) " cannot be conformed to " spec))])))
+#_(defn binding-form
+    [{:keys [fields parent-spec]}]
+    (->> fields
+         (mapcat (fn [{:keys [spec sym optional]}]
+                   (println spec)
+                   (when spec
+                     [sym (ss/conformer-strict-form
+                            (if optional (list (ss/spec-sym "nilable") spec) spec) sym
+                            (u/error-form `(~'pr-str ~sym) " cannot be conformed to " spec))])))
+         vec))
+
+(defn binding-form
+  [{:keys [subs]}]
+  (->> subs
+       (mapcat (fn [{:keys [spec-keyword spec name optional]}]
+                 (when-not (= any? spec)
+                   [name (ss/conformer-strict-form
+                           (if optional (list (ss/spec-sym "nilable") spec-keyword) spec-keyword)
+                           name
+                           (u/error-form `(~'pr-str ~name) " cannot be conformed to " spec-keyword))])))
        vec))
 
-(defn positional-constructor-form [constr-sym parsed-fields]
-  #_(println "posconstrform" constr-sym)
-  (let [syms (mapv :sym parsed-fields)]
-    `(fn ~syms
-       (let ~(binding-form parsed-fields)
-         (~constr-sym ~@syms)))))
+(defn positional-constructor-form
+  [{:as deft-spec
+    :keys [builtin-positional-constructor-sym
+           fields-names]}]
+  `(fn ~fields-names
+     (let ~(binding-form deft-spec)
+       (~builtin-positional-constructor-sym ~@fields-names))))
 
-(defn map-constructor-form [constr-sym parsed-fields]
-
-  #_(println "mapconstrform" constr-sym)
+(defn map-constructor-form
+  [{:as deft-spec
+    :keys [builtin-map-constructor-sym
+           fields-names
+           opt-fields-names
+           req-fields-names]}]
   (let [s (gensym)
-        syms (mapv :sym parsed-fields)
-        req-syms (mapv :sym (remove :optional parsed-fields))
-        req-ks (map (comp keyword name) req-syms)
-        opt-syms (mapv :sym (filter :optional parsed-fields))
-        opt-ks (map (comp keyword name) opt-syms)]
-    `(fn [{:keys ~syms :as ~s}]
-       (let ~(binding-form parsed-fields)
-         (~constr-sym
+        req-ks (map (comp keyword name) req-fields-names)
+        opt-ks (map (comp keyword name) opt-fields-names)]
+    `(fn [{:keys ~fields-names :as ~s}]
+       (let ~(binding-form deft-spec)
+         (~builtin-map-constructor-sym
            (merge ~s
-                  ~(zipmap req-ks req-syms)
-                  (u/rem-nil-vals ~(zipmap opt-ks opt-syms))))))))
+                  ~(zipmap req-ks req-fields-names)
+                  (u/rem-nil-vals ~(zipmap opt-ks opt-fields-names))))))))
 
-(defn unpositional-constructor-form [constr-sym]
-  #_(println "unposconstrform" constr-sym)
-  `(fn [& xs#] (~constr-sym (apply hash-map xs#))))
+(defn unpositional-constructor-form
+  [{:keys [map-constructor-sym]}]
+  (let [constr (if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym))]
+    `(fn [& xs#] (~constr (apply hash-map xs#)))))
 
 ;; macros -------------------------------------------------------------------------------------
-
-#_(defmacro deft
-    [n fields & body]
-
-    (binding [*cljs?* (boolean (:ns &env))]
-
-      (let [;; fields
-            positional? (vector? fields)
-            parsed-fields (parse-fields fields)
-            req-fields (remove :optional parsed-fields)
-            opt-fields (filter :optional parsed-fields)
-            fields-names (mapv :sym parsed-fields)
-            req-fields-names (mapv :sym req-fields)
-
-            ;; symbols
-            record-sym (u/name->class-symbol n)
-            map-constr-sym (u/mksym 'map-> n)
-            map-builtin-constr-sym (u/mksym 'map-> record-sym)
-            predsym (u/mksym n "?")
-            pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)
-
-            ;; sub specs
-            spec-keyword (keyword (str *ns*) (name n))
-            sub-spec-form
-            (fn [{:as field :keys [sym spec]}]
-              (when-not (sub-type-field? field)
-                `(~(ss/spec-sym "def")
-                   ~(keyword (str *ns* "." n) (str sym))
-                   ~(or spec `any?))))
-            sub-specs (keep sub-spec-form req-fields)
-            optional-sub-specs (keep sub-spec-form opt-fields)]
-
-
-
-        (state/register-type! n {:record-symbol record-sym
-                                 :map-constructor-symbol map-constr-sym
-                                 :predicate-symbol predsym
-                                 :spec-keyword spec-keyword
-                                 :fields fields-names})
-
-        `(do (declare ~n ~predsym ~map-constr-sym ~map-builtin-constr-sym)
-
-             ;; specs
-             (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
-
-             ~@sub-specs ~@optional-sub-specs ;; fields specs
-             (~(ss/spec-sym "def") ~spec-keyword
-               (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys")
-                                        :req-un ~(mapv second sub-specs)
-                                        :opt-un ~(mapv second optional-sub-specs)))
-                   ;; wrapping the generator and the conformer
-                   (update :gen
-                           #(fn [& xs#]
-                              (tcg/fmap ~map-builtin-constr-sym
-                                        (apply % xs#))))
-                   (update :conform
-                           #(fn [s# x#]
-                              (let [ret# (% s# x#)]
-                                (if (~(ss/spec-sym "invalid?") ret#)
-                                  ret#
-                                  (~map-builtin-constr-sym ret#)))))))
-
-             ;; record declaration
-             (defrecord ~record-sym ~req-fields-names ~@body)
-
-             ;; constructors
-             ~(if positional?
-                `(def ~n ~(positional-constructor-form (u/mksym '-> record-sym) parsed-fields))
-                `(def ~n ~(unpositional-constructor-form map-constr-sym)))
-
-             (def ~map-constr-sym ~(map-constructor-form map-builtin-constr-sym parsed-fields))
-
-             ;; predicate
-             (def ~predsym (fn [x#] (instance? ~record-sym x#)))
-
-             ;; printing
-             (defmethod ~pprint-sd-sym
-               ~record-sym [x#]
-               (~pprint-sd-sym (cons '~n (map (partial get x#) ~(mapv keyword fields-names)))))
-
-             ~(if positional?
-
-                (if *cljs?*
-
-                  `(extend-protocol cljs.core/IPrintWithWriter
-                     ~record-sym
-                     (cljs.core/-pr-writer [x# w# _#]
-                       (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
-                         (cljs.core/write-all
-                           w# (if (seq extra-keys#)
-                                (cons '~n (mapcat identity x#))
-                                (cons '~n (map (partial get x#) ~(mapv keyword fields-names))))))))
-
-                  `(defmethod print-method
-                     ~record-sym [x# w#]
-                     (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
-                       (print-method
-                         (if (seq extra-keys#)
-                           (cons '~n (mapcat identity x#))
-                           (cons '~n (map (partial get x#) ~(mapv keyword fields-names))))
-                         w#))))
-
-                (if *cljs?*
-
-                  `(extend-protocol cljs.core/IPrintWithWriter
-                     ~record-sym
-                     (cljs.core/-pr-writer [x# w# _#]
-                       (cljs.core/write-all w# (cons '~n (mapcat identity x#)))))
-
-                  `(defmethod print-method
-                     ~record-sym [x# w#]
-                     (print-method (cons '~n (mapcat identity x#)) w#))))
-
-             ))))
 
 (do :deft-new
 
@@ -233,7 +134,8 @@
                            (-> (parse-deft
                                  [(u/dotjoin prefix name sym)
                                   (or spec `any?)])
-                               (assoc :optional optional)))
+                               (assoc :optional optional
+                                      :parent-spec spec-keyword)))
                          fields))
             subspecs
             (reduce (fn [a {:keys [name spec-keyword]}]
@@ -264,11 +166,13 @@
          :positional positional? :alias alias?
          :body body :subs subs}))
 
-    (clojure.pprint/pprint (parse-deft '[iop {a [b c] b number? c {d integer? e [f g]}}]))
-    (parse-deft '(t4 {a [b c]
+    #_(clojure.pprint/pprint (parse-deft '[iop {a [b c] b number? c {d integer? e [f g]}}]))
+    #_(parse-deft '(t4 {a [b c]
                       b {c integer?
                          d string?
                          e [f :- number?]}}))
+
+    (parse-deft '(t4 {a {b [c :- number?]}}))
     (defn emit-deft
       [{:as parsed
         ns' :ns
@@ -299,7 +203,7 @@
              ;(ns-unmap '~ns '~predicate-sym)
              ;~(when-not *cljs?* `(ns ~ns' (:refer-clojure :exclude [~fullname ~predicate-sym])))
 
-             (declare ~fullname ~predicate-sym ~builtin-map-constructor-sym)
+             (u/declare ~fullname ~predicate-sym ~builtin-map-constructor-sym)
 
              ;; specs
              (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
@@ -326,13 +230,13 @@
              ;; record declaration
              (u/defr ~record-sym ~req-fields-names ~@body)
 
-             (u/dof ~map-constructor-sym ~(map-constructor-form builtin-map-constructor-sym fields))
+             (u/dof ~map-constructor-sym ~(map-constructor-form parsed #_#_builtin-map-constructor-sym fields))
 
              ;; constructors
              ~(if positional
-                `(u/dof ~fullname ~(positional-constructor-form builtin-positional-constructor-sym fields))
-                `(u/dof ~fullname ~(unpositional-constructor-form
-                                     (if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym)))))
+                `(u/dof ~fullname ~(positional-constructor-form parsed #_#_builtin-positional-constructor-sym fields))
+                `(u/dof ~fullname ~(unpositional-constructor-form parsed
+                                                                  #_(if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym)))))
 
              ;; predicate
              (u/dof ~predicate-sym (fn [x#] (~(u/mksym record-sym "?") x#)))
@@ -396,6 +300,148 @@
                                     d string?
                                     e [f :- number?]}}))
 
+         (deft t4 {a [b c]
+                   b {c integer?
+                      d string?
+                      e [f :- number?]}})
+
+         (t4 :a [1 2])
+
+         (macroexpand '(deft t4 {a {b [c :- number?]}}))
+         (speculoos.utils/declare t4.a t4.a? )
+         (do t4/a)
+         (deft t4 {a {b [c :- number?]}})
+         (macroexpand '(deft t4 {a {b number?}}))
+
+         (deft t4 {a {b number?}})
+
+         (t4 :a {:b "aze"})
+
+         #_(do
+           (speculoos.utils/declare t4 t4? map->R_t4)
+           (clojure.spec.alpha/def :speculoos.types/t4 clojure.core/any?)
+           (do
+             (speculoos.utils/declare t4.a t4.a? map->R_t4_a)
+             (clojure.spec.alpha/def :speculoos.types.t4/a clojure.core/any?)
+             (speculoos.utils/with-dotsyms
+               (clojure.spec.alpha/def :speculoos.types.t4.a/b number?)
+               (macroexpand '(speculoos.utils/dof
+                  t4.a.b?
+                  (clojure.core/fn
+                    [x__4019__auto__]
+                    (clojure.core/when (clojure.spec.alpha/valid? number? x__4019__auto__) x__4019__auto__))))
+               (speculoos.utils/dof
+                 t4.a.b
+                 (clojure.core/fn
+                   [x__4013__auto__]
+                   (clojure.core/let
+                     [conformed__4014__auto__ (clojure.spec.alpha/conform number? x__4013__auto__)]
+                     (clojure.core/when-not (clojure.spec.alpha/invalid? conformed__4014__auto__) conformed__4014__auto__)))))
+             (clojure.spec.alpha/def
+               :speculoos.types.t4/a
+               (clojure.core/->
+                 (speculoos.specs/spec->SpecImpl (clojure.spec.alpha/keys :req-un [:speculoos.types.t4.a/b] :opt-un []))
+                 (clojure.core/update
+                   :gen
+                   (fn*
+                     [p1__14814__14828__auto__]
+                     (clojure.core/fn
+                       [& xs__14829__auto__]
+                       (clojure.test.check.generators/fmap map->R_t4_a (clojure.core/apply p1__14814__14828__auto__ xs__14829__auto__)))))
+                 (clojure.core/update
+                   :conform
+                   (fn*
+                     [p1__14815__14830__auto__]
+                     (clojure.core/fn
+                       [s__14831__auto__ x__14832__auto__]
+                       (clojure.core/let
+                         [ret__14833__auto__ (p1__14815__14830__auto__ s__14831__auto__ x__14832__auto__)]
+                         (if (clojure.spec.alpha/invalid? ret__14833__auto__) ret__14833__auto__ (map->R_t4_a ret__14833__auto__))))))))
+             (speculoos.utils/defr R_t4_a [b])
+             (speculoos.utils/dof
+               t4.a.from-map
+               (clojure.core/fn
+                 [{:as G__15026, :keys [b]}]
+                 (clojure.core/let
+                   [b
+                    (clojure.core/let
+                      [x__4017__auto__ b conformed__4018__auto__ (clojure.spec.alpha/conform :speculoos.types.t4.a/b x__4017__auto__)]
+                      (clojure.core/if-not
+                        (clojure.spec.alpha/invalid? conformed__4018__auto__)
+                        conformed__4018__auto__
+                        (throw (new Exception (str (pr-str b) " cannot be conformed to " :speculoos.types.t4.a/b)))))]
+                   (map->R_t4_a (clojure.core/merge G__15026 {:b b} (speculoos.utils/rem-nil-vals {}))))))
+             (speculoos.utils/dof
+               t4.a
+               (clojure.core/fn [& xs__14810__auto__] (t4.a/from-map (clojure.core/apply clojure.core/hash-map xs__14810__auto__))))
+             (speculoos.utils/dof t4.a? (clojure.core/fn [x__14832__auto__] (R_t4_a? x__14832__auto__)))
+             (clojure.core/defmethod
+               clojure.pprint/simple-dispatch
+               R_t4_a
+               [x__14832__auto__]
+               (clojure.pprint/simple-dispatch
+                 (clojure.core/cons (quote a) (clojure.core/map (clojure.core/partial clojure.core/get x__14832__auto__) [:b]))))
+             (clojure.core/defmethod
+               clojure.core/print-method
+               R_t4_a
+               [x__14826__auto__ w__14827__auto__]
+               (clojure.core/print-method
+                 (clojure.core/cons (quote t4.a) (clojure.core/mapcat clojure.core/identity x__14826__auto__))
+                 w__14827__auto__)))
+           (clojure.spec.alpha/def
+             :speculoos.types/t4
+             (clojure.core/->
+               (speculoos.specs/spec->SpecImpl (clojure.spec.alpha/keys :req-un [:speculoos.types.t4/a] :opt-un []))
+               (clojure.core/update
+                 :gen
+                 (fn*
+                   [p1__14814__14828__auto__]
+                   (clojure.core/fn
+                     [& xs__14829__auto__]
+                     (clojure.test.check.generators/fmap map->R_t4 (clojure.core/apply p1__14814__14828__auto__ xs__14829__auto__)))))
+               (clojure.core/update
+                 :conform
+                 (fn*
+                   [p1__14815__14830__auto__]
+                   (clojure.core/fn
+                     [s__14831__auto__ x__14832__auto__]
+                     (clojure.core/let
+                       [ret__14833__auto__ (p1__14815__14830__auto__ s__14831__auto__ x__14832__auto__)]
+                       (if (clojure.spec.alpha/invalid? ret__14833__auto__) ret__14833__auto__ (map->R_t4 ret__14833__auto__))))))))
+           (speculoos.utils/defr R_t4 [a])
+           (speculoos.utils/dof
+             t4.from-map
+             (clojure.core/fn
+               [{:as G__15027, :keys [a]}]
+               (clojure.core/let
+                 [a
+                  (clojure.core/let
+                    [x__4017__auto__ a conformed__4018__auto__ (clojure.spec.alpha/conform :speculoos.types.t4/a x__4017__auto__)]
+                    (clojure.core/if-not
+                      (clojure.spec.alpha/invalid? conformed__4018__auto__)
+                      conformed__4018__auto__
+                      (throw (new Exception (str (pr-str a) " cannot be conformed to " :speculoos.types.t4/a)))))]
+                 (map->R_t4 (clojure.core/merge G__15027 {:a a} (speculoos.utils/rem-nil-vals {}))))))
+           (speculoos.utils/dof
+             t4
+             (clojure.core/fn [& xs__14810__auto__] (t4/from-map (clojure.core/apply clojure.core/hash-map xs__14810__auto__))))
+           (speculoos.utils/dof t4? (clojure.core/fn [x__14832__auto__] (R_t4? x__14832__auto__)))
+           (clojure.core/defmethod
+             clojure.pprint/simple-dispatch
+             R_t4
+             [x__14832__auto__]
+             (clojure.pprint/simple-dispatch
+               (clojure.core/cons (quote t4) (clojure.core/map (clojure.core/partial clojure.core/get x__14832__auto__) [:a]))))
+           (clojure.core/defmethod
+             clojure.core/print-method
+             R_t4
+             [x__14826__auto__ w__14827__auto__]
+             (clojure.core/print-method
+               (clojure.core/cons (quote t4) (clojure.core/mapcat clojure.core/identity x__14826__auto__))
+               w__14827__auto__)))
+
+
+
          (require '[clojure.spec.alpha :as s]) (s/conform ::box {:val 1}))
 
 (comment :recursive-spec-test
@@ -430,12 +476,20 @@
                         (take-nth 2 (next body)))))))))
 
 (comment :ns-mess
-         (ns iop.iop
-           (:refer-clojure :exclude [popl]))
+         (ns iop.iop.iop
+           (:refer-clojure :exclude [val]))
 
          (def a 1)
          (def val (fn [x] x))
          (ns-publics (the-ns 'iop.iop))
          (do a)
 
-         (ns bop.bop))
+         (ns a.b.c
+           (:require [iop.iop :refer :all]
+                     [iop.iop.iop :refer :all]))
+
+         (do val )
+
+         (ns bop.bop)
+
+         ())

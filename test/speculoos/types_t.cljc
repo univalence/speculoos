@@ -13,34 +13,33 @@
 
 (deft box [val])
 
-(u/with-dotsyms
-  (deftest one
+(deftest one
 
-    ;; It can be instanciated like this
+  ;; It can be instanciated like this
 
-    (is (box 1)) ;;=> (box 1)
+  (is (box 1)) ;;=> (box 1)
 
-    ;; It prints in a more concise way than default clojure record e.g =(box 1)=
+  ;; It prints in a more concise way than default clojure record e.g =(box 1)=
 
-    ;; We can access its field with normal clojure syntax.
+  ;; We can access its field with normal clojure syntax.
 
-    (is (:val (box 1))) ;;=> 1
+  (is (:val (box 1))) ;;=> 1
 
-    ;; A predicate is available too
+  ;; A predicate is available too
 
-    (is (box? (box 1))) ;;=> true
+  (is (box? (box 1))) ;;=> true
 
-    ;; the ::box spec is defined too
+  ;; the ::box spec is defined too
 
-    (is (s/conform ::box {:val 1})
-        (box 1))
+  (is (s/conform ::box {:val 1})
+      (box 1))
 
-    (is (s/valid? ::box (box 1)))
+  (is (s/valid? ::box (box 1)))
 
-    (is (every? box? (gen/sample (s/gen ::box) 1000)))
+  (is (every? box? (gen/sample (s/gen ::box) 1000)))
 
-    ;; a map constructor is defined too (like with defrecord
-    (is (box 1) (box.from-map {:val 1}))))
+  ;; a map constructor is defined too (like with defrecord
+  (is (box 1) (#?(:cljs box.from-map :clj box/from-map) {:val 1})))
 
 ;;You can pass protocols implementations as in a `defrecord` form
 

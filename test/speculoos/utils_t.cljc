@@ -32,7 +32,7 @@
 #_(defn go [& _]
   (tests/run-tests 'speculoos.utils-t))
 
-(u/with-dotsyms
+#_(u/with-dotsyms
 
   (dof a 1)
   (dof a.b 2)
