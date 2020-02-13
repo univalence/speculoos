@@ -22,10 +22,11 @@
     (extend-protocol mp/ISyntaxTag
       clojure.lang.ISeq
       (syntax-tag [xs]
+        (println "syntax" xs)
         (cond
           (spec-pattern? xs) ::spec
           (spec-shorthand-pattern? xs) ::spec-shorthand
-          (state/registered-type? (first xs)) ::type
+          (state/registered-type? (u/prob 'findtypeat [(symbol (str *ns*)) (first xs)])) ::type
           (u/predicate-symbol? (first xs)) ::pred
           :else ::m/seq)))
 
@@ -34,7 +35,7 @@
                             :guard `(fn [x#] (~(u/mksym c "?") x#)))))
 
     (defmethod m/emit-pattern ::type [[c & ms]]
-      (m/emit-pattern (list (zipmap (->> (state/registered-type? c) :fields-names (map keyword)) ms)
+      (m/emit-pattern (list (zipmap (->> (state/registered-type? [(symbol (str *ns*)) c] #_c) :fields-names (map keyword)) ms)
                             :guard `(fn [x#] (~(u/mksym c "?") x#)))))
 
     (defmethod m/emit-pattern ::pred [[c x]]
@@ -93,7 +94,8 @@
 
                 ;; here ---------------------------------------
                 (or
-                  (state/registered-type? (first pat))
+                  (state/registered-type? (u/prob 'findtypeat [(symbol (str *ns*)) (first pat)])
+                                          #_(first pat))
                   (u/predicate-symbol? (first pat)))
                 (recur (concat pats (next pat)) seen dups)
                 ;; --------------------------------------------

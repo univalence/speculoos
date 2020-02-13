@@ -175,8 +175,7 @@
     (parse-deft '(t4 {a {b [c :- number?]}}))
     (defn emit-deft
       [{:as parsed
-        ns' :ns
-        :keys [ns-str name name-str
+        :keys [ns ns-str name name-str
                fullname spec-keyword
                fields fields-names
                req-fields req-fields-names req-fields-specs
@@ -197,7 +196,7 @@
 
         (let [pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)]
 
-          (state/register-type! name parsed)
+          (state/register-type! (u/prob 'regtypeat [ns fullname]) parsed)
 
           `(do ;(ns-unmap '~ns '~fullname)
              ;(ns-unmap '~ns '~predicate-sym)

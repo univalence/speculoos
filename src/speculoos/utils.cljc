@@ -271,7 +271,8 @@
 #?(:clj
    (defmacro dof
      ;; TODO handle core redef warnings
-     ([n] `(dof ~n {}))
+     ([n]
+      `(dof ~n ~(if (:ns &env) `(cljs.core/clj->js {}) {})))
      ([n v]
       (let [ss (dotsplit n)
             ns-str (str *ns*)
@@ -283,13 +284,13 @@
             (loop [ss ss ctx [] ret [`(cljs.core/declare ~(symbol (first ss)))]]
               (if-not (seq ss)
                 (identity ;prob 'dof-cljs
-                      (list* 'do ret))
+                  (list* 'do ret))
                 (let [head (first ss)
                       head-sym (symbol head)
                       ctx (conj ctx head)
                       varsym (dotjoin ctx)]
                   (recur (next ss) ctx
-                         (conj ret `(set! ~varsym ~(if-not (next ss) v `(or ~varsym ::object))))))))
+                         (conj ret `(set! ~varsym ~(if-not (next ss) v `(or ~varsym (cljs.core/clj->js {})))))))))
 
             ;; clojure
             (let [ns-prefix (or (some-> n namespace symbol) (dotjoin (butlast ss)))
@@ -351,6 +352,12 @@
 
 #?(:clj (defmacro declare [& xs]
           `(do ~@(map (fn [n] `(dof ~n)) xs))))
+
+#?(:clj (defmacro print-cljs-ns []
+          (clojure.pprint/pprint (:ns &env))
+          nil))
+
+
 
 
 
