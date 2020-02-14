@@ -1,0 +1,9 @@
+{
+  "name": "speculoos",
+  "description": "clojure(script) toolbelt",
+  "version": "0.0.1-SNAPSHOT",
+  "dependencies": {},
+  "devDependencies": {
+    "source-map-support": "^0.5.16"
+  }
+}
