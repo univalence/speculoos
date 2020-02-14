@@ -22,7 +22,7 @@
     (extend-protocol mp/ISyntaxTag
       clojure.lang.ISeq
       (syntax-tag [xs]
-        #_(println "syntax" xs)
+        (println "syntax" xs)
         (cond
           (spec-pattern? xs) ::spec
           (spec-shorthand-pattern? xs) ::spec-shorthand
@@ -31,8 +31,8 @@
           :else ::m/seq)))
 
     #_(defmethod m/emit-pattern ::type [[c & ms]]
-      (m/emit-pattern (list (zipmap (->> (state/registered-type? c) :fields (map keyword)) ms)
-                            :guard `(fn [x#] (~(u/mksym c "?") x#)))))
+        (m/emit-pattern (list (zipmap (->> (state/registered-type? c) :fields (map keyword)) ms)
+                              :guard `(fn [x#] (~(u/mksym c "?") x#)))))
 
     (defmethod m/emit-pattern ::type [[c & ms]]
       (m/emit-pattern (list (zipmap (->> (state/registered-type? [(symbol (str *ns*)) c] #_c) :fields-names (map keyword)) ms)
@@ -124,6 +124,11 @@
 
 (do :match-fns
 
+    (defn expand-match-form [argv clauses & [wild-clause]]
+      (macroexpand `(~(if *cljs?* `cm/match `m/match)
+                      ~argv ~@(doall (apply concat clauses))
+                      ~@wild-clause)))
+
 
     (defmacro fm [x & xs]
       (let [[nam [x & xs]] (if (symbol? x) [x xs] [(gensym) (cons x xs)])
@@ -212,38 +217,40 @@
                           (str "fixed arity > variadic arity"
                                (take-nth 2 clauses))))
 
-                (clojure.walk/macroexpand-all
+                `(fn ~nam
 
-                  `(fn ~nam
+                   ;; fixed clauses
+                   ~@(mapv (fn [[argv clauses]]
+                             `(~argv ~(wrap-return
+                                        (expand-match-form argv clauses wild-clause))))
+                           (u/map-keys (fn [n] (vec (repeatedly n gensym)))
+                                       by-arity))
 
-                     ;; fixed clauses
-                     ~@(map (fn [[argv clauses]]
-                              `(~argv ~(wrap-return
-                                         `(~(if *cljs?* `cm/match `m/match)
-                                            ~argv ~@(apply concat clauses)
-                                            ~@wild-clause))))
-                            (u/map-keys (fn [n] (vec (repeatedly n gensym)))
-                                        by-arity))
+                   ;; variadic clauses
+                   ~@(when variadic-arity
+                       (let [argv
+                             (-> (dec variadic-arity)
+                                 (repeatedly gensym)
+                                 (concat ['& (gensym)])
+                                 vec)
+                             variadic-clauses
+                             (mapv variadic-case variadic-clauses)]
 
-                     ;; variadic clauses
-                     ~@(when variadic-arity
-                         (let [argv
-                               (-> (dec variadic-arity)
-                                   (repeatedly gensym)
-                                   (concat ['& (gensym)])
-                                   vec)
-                               variadic-clauses
-                               (map variadic-case variadic-clauses)]
-
-                           [`(~argv (~(if *cljs?* `cm/match `m/match)
-                                      ~(vec (remove '#{&} argv))
-                                      ~@(apply concat variadic-clauses)
-                                      ~@wild-clause))])))))))))
+                         [(list argv
+                                (expand-match-form
+                                  (vec (remove '#{&} argv))
+                                  variadic-clauses
+                                  wild-clause))]))))))))
 
     (defmacro defm
       "a simple pattern matched function"
       [name & clauses]
-      `(def ~name (fm ~name ~@clauses))))
+      `(def ~name (fm ~name ~@clauses)))
+
+    (comment (macroexpand '(fm ::num [a] (+ a a)))
+             (macroexpand '(fn [a] a))
+             (macroexpand '(fm ::num [{a :a}] a [a b] b))
+             (macroexpand '(fm :- number? [a] :a [a b] :b))))
 
 (do :protos
 
@@ -297,11 +304,6 @@
                         chunks))]
 
           `(extend-protocol ~p
-             ~@formatted-chunks))))
+             ~@formatted-chunks)))))
 
-    )
 
-(macroexpand '(fm ::num [a] (+ a a)))
-(macroexpand '(fn [a] a))
-(macroexpand '(fm ::num [{a :a}] a [a b] b))
-(macroexpand '(fm :- number? [a] :a [a b] :b))

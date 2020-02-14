@@ -53,17 +53,6 @@
         :else
         (recur (conj ret {:sym (first seed)}) (rest seed))))))
 
-#_(defn binding-form
-    [{:keys [fields parent-spec]}]
-    (->> fields
-         (mapcat (fn [{:keys [spec sym optional]}]
-                   (println spec)
-                   (when spec
-                     [sym (ss/conformer-strict-form
-                            (if optional (list (ss/spec-sym "nilable") spec) spec) sym
-                            (u/error-form `(~'pr-str ~sym) " cannot be conformed to " spec))])))
-         vec))
-
 (defn binding-form
   [{:keys [subs]}]
   (->> subs
@@ -106,7 +95,7 @@
 
 ;; macros -------------------------------------------------------------------------------------
 
-(do :deft-new
+(do :deft
 
     (defn parse-deft
       [[fullname fields-or-spec & body :as all]]
@@ -168,9 +157,9 @@
 
     #_(clojure.pprint/pprint (parse-deft '[iop {a [b c] b number? c {d integer? e [f g]}}]))
     #_(parse-deft '(t4 {a [b c]
-                      b {c integer?
-                         d string?
-                         e [f :- number?]}}))
+                        b {c integer?
+                           d string?
+                           e [f :- number?]}}))
 
     (parse-deft '(t4 {a {b [c :- number?]}}))
     (defn emit-deft
@@ -289,9 +278,31 @@
     (defmacro deft
       [& body]
       (binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
-        (-> body parse-deft emit-deft))))
+        (-> body parse-deft emit-deft)))
 
-(comment :new-deft
+    (defmacro defc
+      "another taste of deft, see tutorial"
+      [name fields & body]
+      (let [sym (gensym)
+            sym2 (gensym)]
+        (binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
+          `(do
+             (deft ~name ~fields)
+             (let [~sym ~name]
+
+               (defm ~name
+                     ~@(interleave
+                         (take-nth 2 body)
+                         (map (fn [x] (if (vector? x)
+                                        `(~sym ~@x) ;; little optimisation for litteral vectors (most common usecase)
+                                        `(let [~sym2 ~x]
+                                           (if (map? ~sym2)
+                                             ~(if *cljs?* `(~(u/dotjoin name 'from-map) ~sym2)
+                                                          `(~(symbol (c/name name) "from-map") ~sym2))
+                                             (apply ~sym ~sym2)))))
+                              (take-nth 2 (next body)))))))))))
+
+(comment :deft-scratch
          (clojure.walk/macroexpand-all '(deft box [vl]))
          (deft box [val])
          (do box/val)
@@ -313,7 +324,7 @@
          (t4 :a [1 2])
 
          (macroexpand '(deft t4 {a {b [c :- number?]}}))
-         (speculoos.utils/declare t4.a t4.a? )
+         (speculoos.utils/declare t4.a t4.a?)
          (do t4/a)
          (deft t4 {a {b [c :- number?]}})
          (macroexpand '(deft t4 {a {b number?}}))
@@ -321,131 +332,6 @@
          (deft t4 {a {b number?}})
 
          (t4 :a {:b "aze"})
-
-         #_(do
-           (speculoos.utils/declare t4 t4? map->R_t4)
-           (clojure.spec.alpha/def :speculoos.types/t4 clojure.core/any?)
-           (do
-             (speculoos.utils/declare t4.a t4.a? map->R_t4_a)
-             (clojure.spec.alpha/def :speculoos.types.t4/a clojure.core/any?)
-             (speculoos.utils/with-dotsyms
-               (clojure.spec.alpha/def :speculoos.types.t4.a/b number?)
-               (macroexpand '(speculoos.utils/dof
-                  t4.a.b?
-                  (clojure.core/fn
-                    [x__4019__auto__]
-                    (clojure.core/when (clojure.spec.alpha/valid? number? x__4019__auto__) x__4019__auto__))))
-               (speculoos.utils/dof
-                 t4.a.b
-                 (clojure.core/fn
-                   [x__4013__auto__]
-                   (clojure.core/let
-                     [conformed__4014__auto__ (clojure.spec.alpha/conform number? x__4013__auto__)]
-                     (clojure.core/when-not (clojure.spec.alpha/invalid? conformed__4014__auto__) conformed__4014__auto__)))))
-             (clojure.spec.alpha/def
-               :speculoos.types.t4/a
-               (clojure.core/->
-                 (speculoos.specs/spec->SpecImpl (clojure.spec.alpha/keys :req-un [:speculoos.types.t4.a/b] :opt-un []))
-                 (clojure.core/update
-                   :gen
-                   (fn*
-                     [p1__14814__14828__auto__]
-                     (clojure.core/fn
-                       [& xs__14829__auto__]
-                       (clojure.test.check.generators/fmap map->R_t4_a (clojure.core/apply p1__14814__14828__auto__ xs__14829__auto__)))))
-                 (clojure.core/update
-                   :conform
-                   (fn*
-                     [p1__14815__14830__auto__]
-                     (clojure.core/fn
-                       [s__14831__auto__ x__14832__auto__]
-                       (clojure.core/let
-                         [ret__14833__auto__ (p1__14815__14830__auto__ s__14831__auto__ x__14832__auto__)]
-                         (if (clojure.spec.alpha/invalid? ret__14833__auto__) ret__14833__auto__ (map->R_t4_a ret__14833__auto__))))))))
-             (speculoos.utils/defr R_t4_a [b])
-             (speculoos.utils/dof
-               t4.a.from-map
-               (clojure.core/fn
-                 [{:as G__15026, :keys [b]}]
-                 (clojure.core/let
-                   [b
-                    (clojure.core/let
-                      [x__4017__auto__ b conformed__4018__auto__ (clojure.spec.alpha/conform :speculoos.types.t4.a/b x__4017__auto__)]
-                      (clojure.core/if-not
-                        (clojure.spec.alpha/invalid? conformed__4018__auto__)
-                        conformed__4018__auto__
-                        (throw (new Exception (str (pr-str b) " cannot be conformed to " :speculoos.types.t4.a/b)))))]
-                   (map->R_t4_a (clojure.core/merge G__15026 {:b b} (speculoos.utils/rem-nil-vals {}))))))
-             (speculoos.utils/dof
-               t4.a
-               (clojure.core/fn [& xs__14810__auto__] (t4.a/from-map (clojure.core/apply clojure.core/hash-map xs__14810__auto__))))
-             (speculoos.utils/dof t4.a? (clojure.core/fn [x__14832__auto__] (R_t4_a? x__14832__auto__)))
-             (clojure.core/defmethod
-               clojure.pprint/simple-dispatch
-               R_t4_a
-               [x__14832__auto__]
-               (clojure.pprint/simple-dispatch
-                 (clojure.core/cons (quote a) (clojure.core/map (clojure.core/partial clojure.core/get x__14832__auto__) [:b]))))
-             (clojure.core/defmethod
-               clojure.core/print-method
-               R_t4_a
-               [x__14826__auto__ w__14827__auto__]
-               (clojure.core/print-method
-                 (clojure.core/cons (quote t4.a) (clojure.core/mapcat clojure.core/identity x__14826__auto__))
-                 w__14827__auto__)))
-           (clojure.spec.alpha/def
-             :speculoos.types/t4
-             (clojure.core/->
-               (speculoos.specs/spec->SpecImpl (clojure.spec.alpha/keys :req-un [:speculoos.types.t4/a] :opt-un []))
-               (clojure.core/update
-                 :gen
-                 (fn*
-                   [p1__14814__14828__auto__]
-                   (clojure.core/fn
-                     [& xs__14829__auto__]
-                     (clojure.test.check.generators/fmap map->R_t4 (clojure.core/apply p1__14814__14828__auto__ xs__14829__auto__)))))
-               (clojure.core/update
-                 :conform
-                 (fn*
-                   [p1__14815__14830__auto__]
-                   (clojure.core/fn
-                     [s__14831__auto__ x__14832__auto__]
-                     (clojure.core/let
-                       [ret__14833__auto__ (p1__14815__14830__auto__ s__14831__auto__ x__14832__auto__)]
-                       (if (clojure.spec.alpha/invalid? ret__14833__auto__) ret__14833__auto__ (map->R_t4 ret__14833__auto__))))))))
-           (speculoos.utils/defr R_t4 [a])
-           (speculoos.utils/dof
-             t4.from-map
-             (clojure.core/fn
-               [{:as G__15027, :keys [a]}]
-               (clojure.core/let
-                 [a
-                  (clojure.core/let
-                    [x__4017__auto__ a conformed__4018__auto__ (clojure.spec.alpha/conform :speculoos.types.t4/a x__4017__auto__)]
-                    (clojure.core/if-not
-                      (clojure.spec.alpha/invalid? conformed__4018__auto__)
-                      conformed__4018__auto__
-                      (throw (new Exception (str (pr-str a) " cannot be conformed to " :speculoos.types.t4/a)))))]
-                 (map->R_t4 (clojure.core/merge G__15027 {:a a} (speculoos.utils/rem-nil-vals {}))))))
-           (speculoos.utils/dof
-             t4
-             (clojure.core/fn [& xs__14810__auto__] (t4/from-map (clojure.core/apply clojure.core/hash-map xs__14810__auto__))))
-           (speculoos.utils/dof t4? (clojure.core/fn [x__14832__auto__] (R_t4? x__14832__auto__)))
-           (clojure.core/defmethod
-             clojure.pprint/simple-dispatch
-             R_t4
-             [x__14832__auto__]
-             (clojure.pprint/simple-dispatch
-               (clojure.core/cons (quote t4) (clojure.core/map (clojure.core/partial clojure.core/get x__14832__auto__) [:a]))))
-           (clojure.core/defmethod
-             clojure.core/print-method
-             R_t4
-             [x__14826__auto__ w__14827__auto__]
-             (clojure.core/print-method
-               (clojure.core/cons (quote t4) (clojure.core/mapcat clojure.core/identity x__14826__auto__))
-               w__14827__auto__)))
-
-
 
          (require '[clojure.spec.alpha :as s]) (s/conform ::box {:val 1}))
 
@@ -461,24 +347,7 @@
          (s/valid? ::rec (rec 1 (rec 2 nil)))
          (gen/generate (s/gen ::rec)))
 
-(defmacro defc
-  "another taste of deft, see tutorial"
-  [name fields & body]
-  (let [sym (gensym)]
-    `(do
-       (deft ~name ~fields)
-       (let [~sym ~name]
 
-         (defm ~name
-               ~@(interleave
-                   (take-nth 2 body)
-                   (map (fn [x] (if (vector? x)
-                                  `(~sym ~@x) ;; little optimisation for litteral vectors (most common usecase)
-                                  `(let [x# ~x]
-                                     (if (map? x#)
-                                       (u/with-dotsyms (~(u/dotjoin name 'from-map) x#))
-                                       (apply ~sym x#)))))
-                        (take-nth 2 (next body)))))))))
 
 (comment :ns-mess
          (ns iop.iop.iop
@@ -493,7 +362,7 @@
            (:require [iop.iop :refer :all]
                      [iop.iop.iop :refer :all]))
 
-         (do val )
+         (do val)
 
          (ns bop.bop)
 

@@ -40,7 +40,11 @@
      (defmacro isnt [x & xs]
        (if (:ns &env)
          `(cljs.test/is (~'= nil ~x ~@xs))
-         `(clojure.test/is (~'= nil ~x ~@xs))))))
+         `(clojure.test/is (~'= nil ~x ~@xs))))
+
+     (defmacro print-cljs-ns []
+       (clojure.pprint/pprint (:ns &env))
+       nil)))
 
 (defn gat [xs i]
   (if (>= i 0)
@@ -66,18 +70,6 @@
    (symbol (str/join "." (map name xs))))
   ([x & xs]
    (dotjoin (remove nil? (flatten (cons x xs))))))
-
-(defn map-vals [f m]
-  (into {} (map (fn [[k v]] [k (f v)]) m)))
-
-(defn map-keys [f m]
-  (into {} (map (fn [[k v]] [(f k) v]) m)))
-
-(defn map-h [f m]
-  (into {} (map (fn [e] (f (key e) (val e))) m)))
-
-(defn rem-nil-vals [m]
-  (into {} (filter val m)))
 
 (defn name->class-symbol [x]
   (mksym 'R_ x))
@@ -107,6 +99,18 @@
     record? (apply dissoc x (keys x))
     map-entry? []
     (c/empty x)))
+
+(defn map-vals [f m]
+  (into {} (map (fn [[k v]] [k (f v)]) m)))
+
+(defn map-keys [f m]
+  (into {} (map (fn [[k v]] [(f k) v]) m)))
+
+(defn map-h [f m]
+  (into {} (map (fn [e] (f (key e) (val e))) m)))
+
+(defn rem-nil-vals [m]
+  (into {} (filter val m)))
 
 (defn $fn [ffn]
   (fn [x f]
@@ -145,26 +149,6 @@
 
 ;; macros
 
-#?(:clj
-   (do
-     (defmacro f1 [pat & body]
-       `(fn [~pat] ~@body))
-
-     (defmacro f_ [& body]
-       `(fn [~'_] ~@body))
-
-     (defmacro defn+
-       "behave the same as defn but will also define applied and underscore variations"
-       [name & body]
-       (let [name* (mksym name '*)
-             name_ (mksym name '_)
-             name_* (mksym name '_*)]
-         `(do (c/declare ~name* ~name_ ~name_*)
-              (defn ~name ~@body)
-              (def ~name* (partial apply ~name))
-              (defn ~name_ [& xs#] #(~name* % xs#))
-              (def ~name_* (partial apply ~name_)))))))
-
 (defn parse-fn [[fst & nxt :as all]]
 
   (let [[name fst & nxt]
@@ -198,79 +182,95 @@
       :cases (mapv (partial apply list*) impls))))
 
 #?(:clj
-   (defmacro marked-fn
+   (do :fn-macros
 
-     "marked function,
-      define an anonymous form (like fn)
-      a def form (like defn)
-      and a predicate function (like fn?)"
+       (defmacro f1 [pat & body]
+         `(fn [~pat] ~@body))
 
-     [name & [doc]]
+       (defmacro f_ [& body]
+         `(fn [~'_] ~@body))
 
-     `(do
+       (defmacro defn+
+         "behave the same as defn but will also define applied and underscore variations"
+         [name & body]
+         (let [name* (mksym name '*)
+               name_ (mksym name '_)
+               name_* (mksym name '_*)]
+           `(do (c/declare ~name* ~name_ ~name_*)
+                (defn ~name ~@body)
+                (def ~name* (partial apply ~name))
+                (defn ~name_ [& xs#] #(~name* % xs#))
+                (def ~name_* (partial apply ~name_)))))
 
-        (defn ~(mksym "->" name) [f#]
-          (vary-meta f# assoc ~(keyword name) true))
+       (defmacro import-defn+ [sym]
+         (let [n (symbol (name sym))
+               ns' (namespace sym)
+               qualified-sym (fn [postfix] (symbol ns' (name (mksym n postfix))))]
+           `(do (def ~n ~sym)
+                (def ~(mksym n "_") ~(qualified-sym "_"))
+                (def ~(mksym n "*") ~(qualified-sym "*"))
+                (def ~(mksym n "_*") ~(qualified-sym "_*")))))
 
-        (defmacro ~name
-          ([f#] (list '~(mksym (str *ns*) "/->" name) f#))
-          ([x# & xs#]
-           (let [parsed# (parse-fn (cons x# xs#))]
-             `(with-meta
-                (fn ~(or (:name parsed#) (gensym)) ~@(:cases parsed#))
-                {~~(keyword name) true}))))
+       (defmacro marked-fn
 
-        (defn ~(mksym name "?") [x#]
-          (when (-> x# meta ~(keyword name)) x#))
+         "marked function,
+          define an anonymous form (like fn)
+          a def form (like defn)
+          and a predicate function (like fn?)"
+
+         [name & [doc]]
+
+         `(do
+
+            (defn ~(mksym "->" name) [f#]
+              (vary-meta f# assoc ~(keyword name) true))
+
+            (defmacro ~name
+              ([f#] (list '~(mksym (str *ns*) "/->" name) f#))
+              ([x# & xs#]
+               (let [parsed# (parse-fn (cons x# xs#))]
+                 `(with-meta
+                    (fn ~(or (:name parsed#) (gensym)) ~@(:cases parsed#))
+                    {~~(keyword name) true}))))
+
+            (defn ~(mksym name "?") [x#]
+              (when (-> x# meta ~(keyword name)) x#))
 
 
 
-        (defmacro ~(mksym 'def name) [name'# & body#]
-          `(def ~name'# (~'~name ~@body#))))))
+            (defmacro ~(mksym 'def name) [name'# & body#]
+              `(def ~name'# (~'~name ~@body#)))))))
 
 #?(:clj
-   (defmacro import-defn+ [sym]
-     (let [n (symbol (name sym))
-           ns' (namespace sym)
-           qualified-sym (fn [postfix] (symbol ns' (name (mksym n postfix))))]
-       `(do (def ~n ~sym)
-            (def ~(mksym n "_") ~(qualified-sym "_"))
-            (def ~(mksym n "*") ~(qualified-sym "*"))
-            (def ~(mksym n "_*") ~(qualified-sym "_*"))))))
+   (do :dotsyms
 
+       (defn dof-form? [x]
+         (and (seq? x)
+              (symbol? (first x))
+              (= "dof" (name (first x)))))
 
-
-
-
-#?(:clj (do :dotsyms
-
-            (defn dof-form? [x]
-              (and (seq? x)
-                   (symbol? (first x))
-                   (= "dof" (name (first x)))))
-
-            (defn dotsym? [x]
-              (and (symbol? x)
-                   (let [ss (str/split (name x) #"\.")]
-                     (and (seq (next ss))
-                          (every? #(not (re-matches #"^[A-Z].*" %)) ss)))))
-
-            (defn dotsym->qualified-sym [x]
+       (defn dotsym? [x]
+         (and (symbol? x)
               (let [ss (str/split (name x) #"\.")]
-                (symbol (str/join "." (butlast ss)) (last ss))))
+                (and (seq (next ss))
+                     (every? #(not (re-matches #"^[A-Z].*" %)) ss)))))
 
-            (defmacro with-dotsyms [& body]
-              (if (:ns &env)
-                `(do ~@body) ;;in clojurescript we do nothing
-                (letfn [(walk [body]
-                          (walk? body
-                                 ;; node?
-                                 (fn [x] (and (not (dof-form? x)) (coll? x)))
-                                 ;; leaf transform
-                                 (fn [x] (cond (dof-form? x) (concat (take 2 x) (walk (drop 2 x)))
-                                               (dotsym? x) (dotsym->qualified-sym x)
-                                               :else x))))]
-                  `(do ~@(walk body)))))))
+       (defn dotsym->qualified-sym [x]
+         (let [ss (str/split (name x) #"\.")]
+           (symbol (str/join "." (butlast ss)) (last ss))))
+
+       (defmacro with-dotsyms [& body]
+         (if (:ns &env)
+           `(do ~@body) ;;in clojurescript we do nothing
+           (letfn [(walk [body]
+                     (walk? body
+                            ;; node?
+                            (fn [x] (and (not (dof-form? x)) (coll? x)))
+                            ;; leaf transform
+                            (fn [x] (cond (dof-form? x) (concat (take 2 x) (walk (drop 2 x)))
+                                          (dotsym? x) (dotsym->qualified-sym x)
+                                          :else x))))]
+             `(do ~@(walk body)))))))
 
 #?(:clj
    (do :dof
@@ -285,7 +285,7 @@
        (defn dof-cljs-childs-couples [sym]
          (let [sym-segs (dotsplit sym)
                sym-segs-cnt (count sym-segs)]
-           (->> (:cljs @dof-state)
+           (->> (dof-get-cljs-ns)
                 (filter (fn [[k v]]
                           (let [k-segs (dotsplit k)]
                             (and (> (count k-segs) sym-segs-cnt)
@@ -295,7 +295,7 @@
        (defn dof-cljs-parents-couples [sym]
          (let [sym-segs (dotsplit sym)
                sym-heads (heads sym-segs)]
-           (map (fn [s] [s (get-in @dof-state [:cljs s] `(cljs.core/clj->js {}))])
+           (map (fn [s] [s (get (dof-get-cljs-ns) s `(cljs.core/clj->js {}))])
                 (butlast (map dotjoin sym-heads)))))
 
        (defn dof-cljs-form! [sym v]
@@ -304,8 +304,8 @@
                all (concat parents (list [sym v]) childs)
                sets (mapv (fn [[k v]] `(set! ~k ~v)) all)
                root? (get-in @dof-state [:cljs (ffirst all)])]
-           (swap! dof-state update
-                  :cljs merge
+           (swap! dof-state update-in
+                  [:cljs (ns-symbol)] merge
                   (into {} all))
            (if false #_root?
              (list* 'do sets)
@@ -356,50 +356,28 @@
        (defmacro dof
          ;; TODO handle core redef warnings
          ([sym]
-          (let [v nil #_(get-in @dof-state [:cljs sym])]
-            (if (:ns &env)
-              `(dof ~sym ~(or v `(cljs.core/clj->js {})))
-              `(dof ~sym ~(or v {})))))
+          (if (:ns &env)
+            `(dof ~sym (cljs.core/clj->js {}))
+            `(dof ~sym {}))
+          #_(let [v (get (dof-get-cljs-ns) sym)]
+              (if (:ns &env)
+                `(dof ~sym ~(or v `(cljs.core/clj->js {})))
+                `(dof ~sym ~(or v {})))))
          ([sym value]
           (cond
             (:ns &env) (dof-cljs-form! sym value)
             (dof-trivial-case? sym) `(def ~sym ~value)
-            :else (dof-clj-form! sym value))))))
+            :else (dof-clj-form! sym value))))
 
-#_(macroexpand '(dof a.b.c.d.e 1))
-#_(macroexpand '(dof a.b.c 1))
+       (defmacro declare [& xs]
+         `(do ~@(map (fn [n] `(dof ~n)) xs)))
 
-#?(:cljs (defn object? [x]
-           (= ::object x)))
+       (defmacro dofn [name & body]
+         (let [fn-body (if (string? (first body)) (next body) body)]
+           `(dof ~name (fn ~@fn-body))))
+       ))
 
-#_(clojure.walk/macroexpand-all '(with-dotsyms
-                                   (+ a m.k.l)
-                                   clojure.lang.String
-                                   (def r {p.l poi.mlk})
-                                   (dof r.l.p {p.l poi.mlk})))
 
-#_(macroexpand '(dof a.b.c 12))
-
-#_(dof a.b.c 12)
-
-#_(do *ns*)
-
-#?(:clj (defmacro dofn [name & body]
-          (let [fn-body (if (string? (first body)) (next body) body)]
-            `(dof ~name (fn ~@body)))))
-
-#?(:clj (defmacro defr
-          "thin wrapper around defrecord that simply defines a predicate, in order to not have to import the class"
-          [n & body]
-          `(do (defrecord ~n ~@body)
-               (defn ~(mksym n "?") [x#] (instance? ~n x#)))))
-
-#?(:clj (defmacro declare [& xs]
-          `(do ~@(map (fn [n] `(dof ~n)) xs))))
-
-#?(:clj (defmacro print-cljs-ns []
-          (clojure.pprint/pprint (:ns &env))
-          nil))
 
 
 

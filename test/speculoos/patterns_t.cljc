@@ -87,6 +87,23 @@
       (sum2 (num2 x) y)
       )
 
+(comment
+  (macroexpand '(speculoos.patterns/fm
+                  sum2
+                  [(x :speculoos.patterns-t/num2) (y :speculoos.patterns-t/num)]
+                  (num (+ (:val x) (:val y)))
+                  [(x :- integer?) y]
+                  (sum2 (num2 x) y)))
+
+  (binding [*cljs?* true]
+    (cljs.core.match/match
+      [G__77078 G__77079]
+      [(x ::num2) (y ::num)]
+      (num (+ (:val x) (:val y)))
+      [(x :- integer?) y]
+      (+ (num2 x) y))))
+
+
 (deftest spec-patterns
 
   (is (sum2 {:val 1.3} (num 2)) ;; coerced, case 1
