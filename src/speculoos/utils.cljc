@@ -27,6 +27,9 @@
      (defn error-form [& xs]
        `(throw (new ~(if *cljs?* 'js/Error 'Exception) (~'str ~@xs))))
 
+     (defn ns-symbol []
+       (symbol (str *ns*)))
+
      (defmacro is [x & xs]
        (if (:ns &env)
          `(do (cljs.test/is ~x)
@@ -53,6 +56,16 @@
 
 (defn mksym [& xs]
   (->> xs (map name) (apply str) symbol))
+
+(defn dotsplit [x]
+  (when (word? x)
+    (str/split (name x) #"\.")))
+
+(defn dotjoin
+  ([xs]
+   (symbol (str/join "." (map name xs))))
+  ([x & xs]
+   (dotjoin (remove nil? (flatten (cons x xs))))))
 
 (defn map-vals [f m]
   (into {} (map (fn [[k v]] [k (f v)]) m)))
@@ -116,6 +129,19 @@
   (if (node? x)
     ($ x #(walk? % node? f))
     (f x)))
+
+(defn heads [x]
+  (for [n (range (count x))]
+    (take (inc n) x)))
+
+(defn vecset [xs]
+  (:ret (reduce (fn [{:keys [seen ret]} x]
+                  (if (seen x)
+                    {:seen seen :ret ret}
+                    {:seen (conj seen x)
+                     :ret (conj ret x)}))
+                {:seen #{} :ret []}
+                xs)))
 
 ;; macros
 
@@ -212,118 +238,136 @@
             (def ~(mksym n "*") ~(qualified-sym "*"))
             (def ~(mksym n "_*") ~(qualified-sym "_*"))))))
 
-(defn dotsplit [x]
-  (when (word? x)
-    (str/split (name x) #"\.")))
 
-(defn dotjoin
-  ([xs]
-   (symbol (str/join "." (map name xs))))
-  ([x & xs]
-   (dotjoin (remove nil? (flatten (cons x xs))))))
 
-(defn dof-form? [x]
-  (and (seq? x)
-       (symbol? (first x))
-       (= "dof" (name (first x)))))
 
-(defn dotsym? [x]
-  (and (symbol? x)
-       (let [ss (str/split (name x) #"\.")]
-         (and (seq (next ss))
-              (every? #(not (re-matches #"^[A-Z].*" %)) ss)))))
 
-(defn dotsym->qualified-sym [x]
-  (let [ss (str/split (name x) #"\.")]
-    (symbol (str/join "." (butlast ss)) (last ss))))
+#?(:clj (do :dotsyms
 
-#?(:clj (defmacro with-dotsyms [& body]
-          (if (:ns &env)
-            `(do ~@body) ;;in clojurescript we do nothing
-            (letfn [(walk [body]
-                      (walk? body
-                             ;; node?
-                             (fn [x] (and (not (dof-form? x)) (coll? x)))
-                             ;; leaf transform
-                             (fn [x] (cond (dof-form? x) (concat (take 2 x) (walk (drop 2 x)))
-                                           (dotsym? x) (dotsym->qualified-sym x)
-                                           :else x))))]
-              `(do ~@(walk body))))))
+            (defn dof-form? [x]
+              (and (seq? x)
+                   (symbol? (first x))
+                   (= "dof" (name (first x)))))
 
-(defonce dof-state (atom {}))
+            (defn dotsym? [x]
+              (and (symbol? x)
+                   (let [ss (str/split (name x) #"\.")]
+                     (and (seq (next ss))
+                          (every? #(not (re-matches #"^[A-Z].*" %)) ss)))))
 
-(defn heads [x]
-  (for [n (range (count x))]
-    (take (inc n) x)))
+            (defn dotsym->qualified-sym [x]
+              (let [ss (str/split (name x) #"\.")]
+                (symbol (str/join "." (butlast ss)) (last ss))))
 
-(defn vecset [xs]
-  (:ret (reduce (fn [{:keys [seen ret]} x]
-                  (if (seen x)
-                    {:seen seen :ret ret}
-                    {:seen (conj seen x)
-                     :ret (conj ret x)}))
-                {:seen #{} :ret []}
-                xs)))
-
-#_(is (vecset [1 2 3 2 1 4 5 4 6 3 7])
-    [1 2 3 4 5 6 7])
+            (defmacro with-dotsyms [& body]
+              (if (:ns &env)
+                `(do ~@body) ;;in clojurescript we do nothing
+                (letfn [(walk [body]
+                          (walk? body
+                                 ;; node?
+                                 (fn [x] (and (not (dof-form? x)) (coll? x)))
+                                 ;; leaf transform
+                                 (fn [x] (cond (dof-form? x) (concat (take 2 x) (walk (drop 2 x)))
+                                               (dotsym? x) (dotsym->qualified-sym x)
+                                               :else x))))]
+                  `(do ~@(walk body)))))))
 
 #?(:clj
-   (defmacro dof
-     ;; TODO handle core redef warnings
-     ([n]
-      `(dof ~n ~(if (:ns &env) `(cljs.core/clj->js {}) {})))
-     ([n v]
-      (let [ss (dotsplit n)
-            ns-str (str *ns*)
-            ns-sym (symbol ns-str)
-            cljs? (:ns &env)]
-        (if-not (or (namespace n) (next ss))
-          `(def ~n ~v) ;; trivial case
-          (if cljs?
-            (loop [ss ss ctx [] ret [`(cljs.core/declare ~(symbol (first ss)))]]
-              (if-not (seq ss)
-                (identity ;prob 'dof-cljs
-                  (list* 'do ret))
-                (let [head (first ss)
-                      head-sym (symbol head)
-                      ctx (conj ctx head)
-                      varsym (dotjoin ctx)]
-                  (recur (next ss) ctx
-                         (conj ret `(set! ~varsym ~(if-not (next ss) v `(or ~varsym (cljs.core/clj->js {})))))))))
+   (do :dof
 
-            ;; clojure
-            (let [ns-prefix (or (some-> n namespace symbol) (dotjoin (butlast ss)))
-                  sub-ns-sym (dotjoin [ns-str ns-prefix])
-                  varsym (symbol (last ss))
-                  splitted-prefix (dotsplit ns-prefix)]
+       (def dof-state (atom {}))
 
-              (swap! dof-state update
-                     ns-str
-                     (fn [nss]
-                       (if-not ((set nss) ns-prefix)
-                         (conj (or nss []) ns-prefix)
-                         nss)))
+       (defn dof-get-cljs-ns []
+         (get-in @dof-state [:cljs (ns-symbol)]))
 
-              `(do
-                 (~'ns ~sub-ns-sym
-                   (:refer-clojure :exclude ~(doall (cons varsym (when (find-ns sub-ns-sym) (keys (ns-publics (the-ns sub-ns-sym)))))))
-                   (:require [~ns-sym :refer :all])
-                   ~@(->> (get @dof-state ns-str)
-                          (mapcat (fn [suffix]
-                                    #_(println (dotsplit suffix))
-                                    (for [s (heads (dotsplit suffix))]
-                                      (list :require [(dotjoin ns-str s) :as (dotjoin s)]))))
-                          (remove (fn [[_ [_ _ a]]] (= a ns-prefix)))
-                          vecset))
-                 (def ~varsym (with-dotsyms ~v))
-                 (~'in-ns '~ns-sym)
-                 #_`(require '[~sub-ns-sym :as ~(symbol ns-prefix)])
-                 ~@(for [n (map inc (range (count splitted-prefix)))]
-                     `(require '[~(dotjoin ns-str (take n splitted-prefix)) :as ~(dotjoin (take n splitted-prefix))]))))))))))
+       (comment (clojure.pprint/pprint @dof-state))
 
-(macroexpand '(dof a.b.c.d.e 1))
-(macroexpand '(dof a.b.c 1))
+       (defn dof-cljs-childs-couples [sym]
+         (let [sym-segs (dotsplit sym)
+               sym-segs-cnt (count sym-segs)]
+           (->> (:cljs @dof-state)
+                (filter (fn [[k v]]
+                          (let [k-segs (dotsplit k)]
+                            (and (> (count k-segs) sym-segs-cnt)
+                                 (= sym-segs (take sym-segs-cnt k-segs))))))
+                (sort-by #(-> % key name count)))))
+
+       (defn dof-cljs-parents-couples [sym]
+         (let [sym-segs (dotsplit sym)
+               sym-heads (heads sym-segs)]
+           (map (fn [s] [s (get-in @dof-state [:cljs s] `(cljs.core/clj->js {}))])
+                (butlast (map dotjoin sym-heads)))))
+
+       (defn dof-cljs-form! [sym v]
+         (let [parents (dof-cljs-parents-couples sym)
+               childs (dof-cljs-childs-couples sym)
+               all (concat parents (list [sym v]) childs)
+               sets (mapv (fn [[k v]] `(set! ~k ~v)) all)
+               root? (get-in @dof-state [:cljs (ffirst all)])]
+           (swap! dof-state update
+                  :cljs merge
+                  (into {} all))
+           (if false #_root?
+             (list* 'do sets)
+             (list* 'do (cons `(def ~@(first all)) (next sets))))))
+
+       (defn dof-clj-form!
+         [sym v]
+         (let [ss (dotsplit sym)
+               ns-str (str *ns*)
+               ns-sym (symbol ns-str)
+               ns-prefix (or (some-> sym namespace symbol) (dotjoin (butlast ss)))
+               sub-nss-syms (map #(dotjoin [ns-str %]) (map dotjoin (butlast (heads ss))))
+               sub-ns-sym (last sub-nss-syms)
+               varsym (symbol (last ss))
+               splitted-prefix (dotsplit ns-prefix)
+               undeclared-sub-nss (remove find-ns (butlast sub-nss-syms))
+               known-ns? (find-ns sub-ns-sym)
+               publics (when known-ns? (keys (ns-publics (the-ns sub-ns-sym))))]
+
+           (swap! dof-state update
+                  ns-str
+                  (fn [nss]
+                    (if-not ((set nss) ns-prefix)
+                      (conj (or nss []) ns-prefix)
+                      nss)))
+           `(do
+              ~@(mapv (fn [ns'] `(~'ns ~ns')) undeclared-sub-nss)
+              (~'ns ~sub-ns-sym
+                (:refer-clojure :exclude
+                  ~(doall (cons varsym publics)))
+                (:require [~ns-sym :refer :all])
+                ~@(->> (get @dof-state ns-str)
+                       (mapcat (fn [suffix]
+                                 (for [s (heads (dotsplit suffix))]
+                                   (list :require [(dotjoin ns-str s) :as (dotjoin s)]))))
+                       (remove (fn [[_ [_ _ a]]] (= a ns-prefix)))
+                       vecset))
+              (def ~varsym (with-dotsyms ~v))
+              (~'in-ns '~ns-sym)
+              ~@(for [n (map inc (range (count splitted-prefix)))]
+                  `(require '[~(dotjoin ns-str (take n splitted-prefix))
+                              :as ~(dotjoin (take n splitted-prefix))])))))
+
+       (defn dof-trivial-case? [sym]
+         (not (or (namespace sym)
+                  (next (dotsplit sym)))))
+
+       (defmacro dof
+         ;; TODO handle core redef warnings
+         ([sym]
+          (let [v nil #_(get-in @dof-state [:cljs sym])]
+            (if (:ns &env)
+              `(dof ~sym ~(or v `(cljs.core/clj->js {})))
+              `(dof ~sym ~(or v {})))))
+         ([sym value]
+          (cond
+            (:ns &env) (dof-cljs-form! sym value)
+            (dof-trivial-case? sym) `(def ~sym ~value)
+            :else (dof-clj-form! sym value))))))
+
+#_(macroexpand '(dof a.b.c.d.e 1))
+#_(macroexpand '(dof a.b.c 1))
 
 #?(:cljs (defn object? [x]
            (= ::object x)))

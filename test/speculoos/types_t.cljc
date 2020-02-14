@@ -62,6 +62,102 @@
 
 (deft num [val ::int])
 
+(comment
+  (macroexpand '(deft num [val ::int]))
+
+  (do
+    (speculoos.utils/declare num num? map->R_num)
+    (cljs.spec.alpha/def :speculoos.types-t/num clojure.core/any?)
+    (speculoos.utils/with-dotsyms
+      (cljs.spec.alpha/def :speculoos.types-t.num/val :speculoos.types-t/int)
+      (speculoos.utils/dof
+        num.val?
+        (clojure.core/fn
+          [x__54801__auto__]
+          (clojure.core/when (cljs.spec.alpha/valid? :speculoos.types-t/int x__54801__auto__) x__54801__auto__)))
+      (speculoos.utils/dof
+        num.val
+        (clojure.core/fn
+          [x__54795__auto__]
+          (clojure.core/let
+            [conformed__54796__auto__ (cljs.spec.alpha/conform :speculoos.types-t/int x__54795__auto__)]
+            (clojure.core/when-not (cljs.spec.alpha/invalid? conformed__54796__auto__) conformed__54796__auto__)))))
+    (cljs.spec.alpha/def
+      :speculoos.types-t/num
+      (clojure.core/->
+        (speculoos.specs/spec->SpecImpl (cljs.spec.alpha/keys :req-un [:speculoos.types-t.num/val] :opt-un []))
+        (clojure.core/update
+          :gen
+          (fn*
+            [p1__60816__60830__auto__]
+            (clojure.core/fn
+              [& xs__60831__auto__]
+              (clojure.test.check.generators/fmap map->R_num (clojure.core/apply p1__60816__60830__auto__ xs__60831__auto__)))))
+        (clojure.core/update
+          :conform
+          (fn*
+            [p1__60817__60832__auto__]
+            (clojure.core/fn
+              [s__60833__auto__ x__60834__auto__]
+              (clojure.core/let
+                [ret__60835__auto__ (p1__60817__60832__auto__ s__60833__auto__ x__60834__auto__)]
+                (if (cljs.spec.alpha/invalid? ret__60835__auto__) ret__60835__auto__ (map->R_num ret__60835__auto__))))))))
+    (speculoos.utils/defr R_num [val])
+    (speculoos.utils/dof
+      num.from-map
+      (clojure.core/fn
+        [{:as G__61195, :keys [val]}]
+        (clojure.core/let
+          [val
+           (clojure.core/let
+             [x__54799__auto__
+              val
+              conformed__54800__auto__
+              (cljs.spec.alpha/conform :speculoos.types-t.num/val x__54799__auto__)]
+             (clojure.core/if-not
+               (cljs.spec.alpha/invalid? conformed__54800__auto__)
+               conformed__54800__auto__
+               (throw (new js/Error (str (pr-str val) " cannot be conformed to " :speculoos.types-t.num/val)))))]
+          (map->R_num (clojure.core/merge G__61195 {:val val} (speculoos.utils/rem-nil-vals {}))))))
+    (speculoos.utils/dof
+      num
+      (clojure.core/fn
+        [val]
+        (clojure.core/let
+          [val
+           (clojure.core/let
+             [x__54799__auto__
+              val
+              conformed__54800__auto__
+              (cljs.spec.alpha/conform :speculoos.types-t.num/val x__54799__auto__)]
+             (clojure.core/if-not
+               (cljs.spec.alpha/invalid? conformed__54800__auto__)
+               conformed__54800__auto__
+               (throw (new js/Error (str (pr-str val) " cannot be conformed to " :speculoos.types-t.num/val)))))]
+          (->R_num val))))
+    (speculoos.utils/dof num? (clojure.core/fn [x__60834__auto__] (R_num? x__60834__auto__)))
+    (clojure.core/defmethod
+      cljs.pprint/simple-dispatch
+      R_num
+      [x__60834__auto__]
+      (cljs.pprint/simple-dispatch
+        (clojure.core/cons (quote num) (clojure.core/map (clojure.core/partial clojure.core/get x__60834__auto__) [:val]))))
+    (clojure.core/extend-protocol
+      cljs.core/IPrintWithWriter
+      R_num
+      (cljs.core/-pr-writer
+        [x__60818__auto__ w__60819__auto__ ___60820__auto__]
+        (clojure.core/let
+          [extra-keys__60821__auto__ (clojure.core/dissoc x__60818__auto__ :val)]
+          (cljs.core/write-all
+            w__60819__auto__
+            (if
+              (clojure.core/seq extra-keys__60821__auto__)
+              (clojure.core/cons (quote num) (clojure.core/mapcat clojure.core/identity x__60818__auto__))
+              (clojure.core/cons (quote num) (clojure.core/map (clojure.core/partial clojure.core/get x__60818__auto__) [:val])))))))))
+
+(macroexpand '(u/dof poupou))
+
 (deftest two
 
   (is (num 1))
@@ -153,7 +249,7 @@
 ;; defc defines a new type, like deft.
 ;; Along with a pattern matched constructor function:
 
-(defc duo [a b] ;; this is the same as deft, a and b are the record fields
+#_(defc duo [a b] ;; this is the same as deft, a and b are the record fields
       ;; constructor cases
       ;; each case returns the fields values
       [(num x) (num y)] [x y] ;; here x and y will be bound to a and b fields
@@ -163,10 +259,11 @@
       [(num x) (num y) z] {:a (+ x y) :b z}
       [x (num y) (num z)] (assoc {:a x} :b (+ y z)))
 
-(deftest testing-defc
+#_(deftest testing-defc
 
   (is (duo (num 1) (num 2))) ;;=> (duo 1 2)
   (is (duo (fork :a :b) (fork :c :d))) ;;=> (duo :a :d)
   (is (duo :what :ever)) ;=> (duo :what :ever)
   (is (duo (num 1) (num 2) 3)) ;=> (duo 3 3)
   (is (duo :iop (num 1) (num 2)))) ;=> (duo :iop 3)
+

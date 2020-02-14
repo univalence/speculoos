@@ -22,11 +22,11 @@
     (extend-protocol mp/ISyntaxTag
       clojure.lang.ISeq
       (syntax-tag [xs]
-        (println "syntax" xs)
+        #_(println "syntax" xs)
         (cond
           (spec-pattern? xs) ::spec
           (spec-shorthand-pattern? xs) ::spec-shorthand
-          (state/registered-type? (u/prob 'findtypeat [(symbol (str *ns*)) (first xs)])) ::type
+          (state/registered-type? [(symbol (str *ns*)) (first xs)]) ::type
           (u/predicate-symbol? (first xs)) ::pred
           :else ::m/seq)))
 
@@ -94,7 +94,7 @@
 
                 ;; here ---------------------------------------
                 (or
-                  (state/registered-type? (u/prob 'findtypeat [(symbol (str *ns*)) (first pat)])
+                  (state/registered-type? [(symbol (str *ns*)) (first pat)]
                                           #_(first pat))
                   (u/predicate-symbol? (first pat)))
                 (recur (concat pats (next pat)) seen dups)
@@ -123,80 +123,6 @@
                     (fn [_] wildcards-and-duplicates)))
 
 (do :match-fns
-
-    #_(defmacro fm [x & xs]
-        (let [[nam [x & xs]] (if (symbol? x) [x xs] [(gensym) (cons x xs)])
-              [return-spec clauses] (cond (qualified-keyword? x) [x xs]
-                                          (= :- x) [(first xs) (next xs)]
-                                          :else [nil (cons x xs)])
-              clauses (partition 2 clauses)
-              arity (comp count first)
-              variadic-pattern? #(-> % reverse next first (= '&))
-              variadic-clause? (comp variadic-pattern? first)
-              fixed-clauses (remove variadic-clause? clauses)
-              variadic-clauses (filter variadic-clause? clauses)
-              by-arity (group-by arity fixed-clauses)
-              variadic-arity (and (seq variadic-clauses)
-                                  (-> variadic-clauses first first count dec))
-
-              wrap-return
-              (fn [expr]
-                (if return-spec
-                  `(or ~(ss/validator-form return-spec expr)
-                       ~(u/error-form (str *ns*) "/"
-                                      (name nam) ":\ninvalid return value: "
-                                      `(~'pr-str ~expr) " is not a valid " return-spec))
-                  expr))
-
-              variadic-case
-              (fn self [[pat expr]]
-                (let [lpat (last pat)
-                      blpat (vec (drop-last 2 pat))
-                      lpat'
-                      (if-not (seq? lpat)
-                        lpat
-                        (condp = (mp/syntax-tag lpat)
-                          ::spec (list (first lpat) :- (list (ss/spec-sym "*") (nth lpat 2)))
-                          ::spec-shorthand (list (first lpat) :- (list (ss/spec-sym "*") (second lpat)))
-                          lpat))]
-                  [(conj blpat lpat') (wrap-return expr)]))]
-
-          (binding [*cljs?* (and (:ns &env) true)]
-
-            (when variadic-arity
-
-              (assert (apply = (map arity variadic-clauses))
-                      "variadic patterns should be equals in length")
-
-              (assert (every? (partial > variadic-arity) (keys by-arity))
-                      (str "fixed arity > variadic arity"
-                           (take-nth 2 clauses))))
-
-            (clojure.walk/macroexpand-all
-
-              `(fn ~nam
-
-                 ;; fixed clauses
-                 ~@(map (fn [[argv clauses]]
-                          `(~argv ~(wrap-return
-                                     `(~(if *cljs?* `cm/match `m/match)
-                                        ~argv ~@(apply concat clauses)))))
-                        (u/map-keys (fn [n] (vec (repeatedly n gensym)))
-                                    by-arity))
-
-                 ;; variadic clauses
-                 ~@(when variadic-arity
-                     (let [argv
-                           (-> (dec variadic-arity)
-                               (repeatedly gensym)
-                               (concat ['& (gensym)])
-                               vec)
-                           variadic-clauses
-                           (map variadic-case variadic-clauses)]
-
-                       [`(~argv (~(if *cljs?* `cm/match `m/match)
-                                  ~(vec (remove '#{&} argv))
-                                  ~@(apply concat variadic-clauses)))])))))))
 
 
     (defmacro fm [x & xs]

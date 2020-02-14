@@ -196,13 +196,20 @@
 
         (let [pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)]
 
-          (state/register-type! (u/prob 'regtypeat [ns fullname]) parsed)
+          (state/register-type! [ns fullname] parsed)
 
           `(do ;(ns-unmap '~ns '~fullname)
              ;(ns-unmap '~ns '~predicate-sym)
              ;~(when-not *cljs?* `(ns ~ns' (:refer-clojure :exclude [~fullname ~predicate-sym])))
 
-             (u/declare ~fullname ~predicate-sym ~builtin-map-constructor-sym)
+             (u/declare ~fullname ~predicate-sym ~builtin-map-constructor-sym
+                        )
+
+             ;; record declaration
+
+             #_(u/defr ~record-sym ~req-fields-names ~@body)
+             (defrecord ~record-sym ~req-fields-names ~@body)
+             (defn ~(u/mksym record-sym "?") [x#] (instance? ~record-sym x#))
 
              ;; specs
              (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
@@ -226,8 +233,7 @@
                                   ret#
                                   (~builtin-map-constructor-sym ret#)))))))
 
-             ;; record declaration
-             (u/defr ~record-sym ~req-fields-names ~@body)
+
 
              (u/dof ~map-constructor-sym ~(map-constructor-form parsed #_#_builtin-map-constructor-sym fields))
 
