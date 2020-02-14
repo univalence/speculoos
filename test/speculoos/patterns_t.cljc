@@ -1,4 +1,5 @@
 (ns speculoos.patterns-t
+  (:refer-clojure :exclude [num val])
   (:require #?(:cljs [cljs.spec.alpha :as s] :clj [clojure.spec.alpha :as s])
             #?(:cljs [cljs.core.match] :clj [clojure.core.match])
             #?(:clj  [clojure.test :refer [deftest]]

@@ -1,4 +1,5 @@
 (ns speculoos.types-t
+  (:refer-clojure :exclude [num val])
   (:require #?(:clj [clojure.spec.alpha :as s] :cljs [cljs.spec.alpha :as s])
             #?(:clj [clojure.spec.gen.alpha :as gen] :cljs [cljs.spec.gen.alpha :as gen])
             [speculoos.utils :as u #?(:clj :refer :cljs :refer-macros) [is]]

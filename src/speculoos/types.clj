@@ -187,16 +187,11 @@
 
           (state/register-type! [ns fullname] parsed)
 
-          `(do ;(ns-unmap '~ns '~fullname)
-             ;(ns-unmap '~ns '~predicate-sym)
-             ;~(when-not *cljs?* `(ns ~ns' (:refer-clojure :exclude [~fullname ~predicate-sym])))
-
-             (u/declare ~fullname ~predicate-sym ~builtin-map-constructor-sym
-                        )
+          `(do
+             (u/declare ~fullname ~predicate-sym)
 
              ;; record declaration
 
-             #_(u/defr ~record-sym ~req-fields-names ~@body)
              (defrecord ~record-sym ~req-fields-names ~@body)
              (defn ~(u/mksym record-sym "?") [x#] (instance? ~record-sym x#))
 
@@ -205,7 +200,6 @@
 
              ~@(mapv emit-deft subs)
 
-             ;~@sub-specs ~@optional-sub-specs ;; fields specs
              (~(ss/spec-sym "def") ~spec-keyword
                (-> (ss/spec->SpecImpl (~(ss/spec-sym "keys")
                                         :req-un ~req-fields-specs

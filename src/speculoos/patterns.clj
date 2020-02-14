@@ -22,7 +22,7 @@
     (extend-protocol mp/ISyntaxTag
       clojure.lang.ISeq
       (syntax-tag [xs]
-        (println "syntax" xs)
+        #_(println "syntax" xs)
         (cond
           (spec-pattern? xs) ::spec
           (spec-shorthand-pattern? xs) ::spec-shorthand

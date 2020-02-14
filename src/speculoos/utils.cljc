@@ -147,6 +147,56 @@
                 {:seen #{} :ret []}
                 xs)))
 
+;; ns
+
+#?(:clj
+   (do :namespaces
+
+       (defn ->ns [x]
+         (cond (symbol? x) (when (find-ns x) (the-ns x))
+               (instance? clojure.lang.Namespace x) x))
+
+       (defn ns-mappings
+         ([] (ns-mappings *ns*))
+         ([ns] #_(cond (symbol? ns) (when (find-ns ns) (.getMappings (the-ns ns)))
+                       (instance? clojure.lang.Namespace ns) (.getMappings ns))
+          (.getMappings (->ns ns))))
+
+       (defn core-exclude [x]
+         (if (coll? x)
+           (doseq [x1 x]
+             #_(println "excloop" x1)
+             (core-exclude x1))
+           (let [ms (ns-mappings)
+                 found (get ms x)
+                 from-ns (:ns (meta found))]
+             (when (= (the-ns 'clojure.core) from-ns)
+               #_(println "excluding " x " from " *ns*)
+               (.unmap *ns* x)))))
+
+       (defn core-mappings
+         ([] (core-mappings *ns*))
+         ([x] (->> (ns-mappings x)
+                   (filter (fn [[k v]] (and (-> v meta :ns (= (the-ns 'clojure.core)))
+                                            (-> v meta :private not))))
+                   (into {})
+                   keys set)))
+
+       (defn core-exclusions
+         ([] (core-exclusions *ns*))
+         ([x]
+          (clojure.set/difference
+            (core-mappings 'clojure.core)
+            (core-mappings x)
+            #_(-> (ns-mappings x) keys set))))
+
+       (comment
+         ((core-exclusions) 'empty)
+         ((core-mappings) 'empty)
+         ((core-mappings 'clojure.core) 'empty))))
+
+
+
 ;; macros
 
 (defn parse-fn [[fst & nxt :as all]]
@@ -303,11 +353,11 @@
                childs (dof-cljs-childs-couples sym)
                all (concat parents (list [sym v]) childs)
                sets (mapv (fn [[k v]] `(set! ~k ~v)) all)
-               root? (get-in @dof-state [:cljs (ffirst all)])]
+               root? (get (dof-get-cljs-ns) (ffirst all))]
            (swap! dof-state update-in
                   [:cljs (ns-symbol)] merge
                   (into {} all))
-           (if false #_root?
+           (if root?
              (list* 'do sets)
              (list* 'do (cons `(def ~@(first all)) (next sets))))))
 
@@ -323,7 +373,8 @@
                splitted-prefix (dotsplit ns-prefix)
                undeclared-sub-nss (remove find-ns (butlast sub-nss-syms))
                known-ns? (find-ns sub-ns-sym)
-               publics (when known-ns? (keys (ns-publics (the-ns sub-ns-sym))))]
+               publics (when known-ns? (keys (ns-publics (the-ns sub-ns-sym))))
+               exclusions (into (core-exclusions) (cons varsym publics))]
 
            (swap! dof-state update
                   ns-str
@@ -332,18 +383,28 @@
                       (conj (or nss []) ns-prefix)
                       nss)))
            `(do
-              ~@(mapv (fn [ns'] `(~'ns ~ns')) undeclared-sub-nss)
-              (~'ns ~sub-ns-sym
-                (:refer-clojure :exclude
-                  ~(doall (cons varsym publics)))
-                (:require [~ns-sym :refer :all])
-                ~@(->> (get @dof-state ns-str)
-                       (mapcat (fn [suffix]
-                                 (for [s (heads (dotsplit suffix))]
-                                   (list :require [(dotjoin ns-str s) :as (dotjoin s)]))))
-                       (remove (fn [[_ [_ _ a]]] (= a ns-prefix)))
-                       vecset))
-              (def ~varsym (with-dotsyms ~v))
+
+              ;; initialize unexistant parent namespaces
+              ~@(mapv (fn [ns']
+                        `(do (~'ns ~ns')
+                             (core-exclude '~exclusions)))
+                      undeclared-sub-nss)
+
+              ;; actual namespace
+              (~'ns ~sub-ns-sym)
+              (core-exclude '~exclusions)
+              (use '~ns-sym)
+              ~@(->> (get @dof-state ns-str)
+                     (mapcat (fn [suffix]
+                               (for [s (heads (dotsplit suffix))]
+                                 `(~'require '[~(dotjoin ns-str s) :as ~(dotjoin s)]))))
+                     (remove (fn [[_ [_ [_ _ a]]]] (= a ns-prefix)))
+                     vecset)
+
+              (def ~varsym
+                (with-dotsyms ~v))
+
+              ;; return to original namespace
               (~'in-ns '~ns-sym)
               ~@(for [n (map inc (range (count splitted-prefix)))]
                   `(require '[~(dotjoin ns-str (take n splitted-prefix))
@@ -356,17 +417,18 @@
        (defmacro dof
          ;; TODO handle core redef warnings
          ([sym]
-          (if (:ns &env)
-            `(dof ~sym (cljs.core/clj->js {}))
-            `(dof ~sym {}))
-          #_(let [v (get (dof-get-cljs-ns) sym)]
-              (if (:ns &env)
-                `(dof ~sym ~(or v `(cljs.core/clj->js {})))
-                `(dof ~sym ~(or v {})))))
+          #_(if (:ns &env)
+              `(dof ~sym (cljs.core/clj->js {}))
+              `(dof ~sym {}))
+          (let [v (get (dof-get-cljs-ns) sym)]
+            (if (:ns &env)
+              `(dof ~sym ~(or v `(cljs.core/clj->js {})))
+              `(do (core-exclude '~sym)
+                   (dof ~sym ~(or v {}))))))
          ([sym value]
           (cond
             (:ns &env) (dof-cljs-form! sym value)
-            (dof-trivial-case? sym) `(def ~sym ~value)
+            (dof-trivial-case? sym) `(do (core-exclude '~sym) (def ~sym ~value))
             :else (dof-clj-form! sym value))))
 
        (defmacro declare [& xs]
