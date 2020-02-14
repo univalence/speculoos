@@ -245,7 +245,7 @@
     (defmacro defm
       "a simple pattern matched function"
       [name & clauses]
-      `(def ~name (fm ~name ~@clauses)))
+      `(u/dof ~name (fm ~name ~@clauses)))
 
     (comment (macroexpand '(fm ::num [a] (+ a a)))
              (macroexpand '(fn [a] a))
