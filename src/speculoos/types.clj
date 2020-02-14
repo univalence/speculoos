@@ -277,24 +277,32 @@
     (defmacro defc
       "another taste of deft, see tutorial"
       [name fields & body]
-      (let [sym (gensym)
-            sym2 (gensym)]
-        (binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
-          `(do
-             (deft ~name ~fields)
-             (let [~sym ~name]
 
-               (defm ~name
-                     ~@(interleave
-                         (take-nth 2 body)
-                         (map (fn [x] (if (vector? x)
-                                        `(~sym ~@x) ;; little optimisation for litteral vectors (most common usecase)
-                                        `(let [~sym2 ~x]
-                                           (if (map? ~sym2)
-                                             ~(if *cljs?* `(~(u/dotjoin name 'from-map) ~sym2)
-                                                          `(~(symbol (c/name name) "from-map") ~sym2))
-                                             (apply ~sym ~sym2)))))
-                              (take-nth 2 (next body)))))))))))
+      (let [sym (gensym)
+            sym2 (gensym)
+
+            map-constructor-sym
+            (if (:ns &env)
+              (u/dotjoin sym 'from-map)
+              (symbol (c/name name) "from-map"))
+
+            compile-return
+            (fn [x]
+              (if (vector? x)
+                `(~sym ~@x) ;; little optimisation for litteral vectors (most common usecase)
+                `(let [~sym2 ~x]
+                   (if (map? ~sym2)
+                     (~map-constructor-sym ~sym2)
+                     (apply ~sym ~sym2)))))]
+
+        `(do
+           (deft ~name ~fields)
+           (let [~sym ~name]
+             (defm ~name
+                   ~@(->> (take-nth 2 (next body))
+                          (mapv compile-return)
+                          (interleave (take-nth 2 body))
+                          doall)))))))
 
 (comment :deft-scratch
          (clojure.walk/macroexpand-all '(deft box [vl]))

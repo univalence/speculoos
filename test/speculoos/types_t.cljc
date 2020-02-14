@@ -154,7 +154,7 @@
 ;; defc defines a new type, like deft.
 ;; Along with a pattern matched constructor function:
 
-#_(defc duo [a b] ;; this is the same as deft, a and b are the record fields
+(defc duo [a b] ;; this is the same as deft, a and b are the record fields
       ;; constructor cases
       ;; each case returns the fields values
       [(num x) (num y)] [x y] ;; here x and y will be bound to a and b fields
@@ -164,7 +164,7 @@
       [(num x) (num y) z] {:a (+ x y) :b z}
       [x (num y) (num z)] (assoc {:a x} :b (+ y z)))
 
-#_(deftest testing-defc
+(deftest testing-defc
 
   (is (duo (num 1) (num 2))) ;;=> (duo 1 2)
   (is (duo (fork :a :b) (fork :c :d))) ;;=> (duo :a :d)
