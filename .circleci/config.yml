@@ -16,7 +16,7 @@ jobs:
             - v1-dependencies-{{ checksum "deps.edn" }}
             - v1-dependencies- # fallback if cache not found
 
-      - run: npm install
+      #- run: npm install
 
       - run: clojure -A:test-jvm
 
