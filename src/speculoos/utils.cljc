@@ -56,9 +56,9 @@
                    ::catched))))
 
      #_(defmacro expansion-error [expr]
-       (is ::catched
-           (try (clojure.walk/macroexpand-all expr)
-                (catch Exception _ ::catched))))))
+         (is ::catched
+             (try (clojure.walk/macroexpand-all expr)
+                  (catch Exception _ ::catched))))))
 
 (defn gat [xs i]
   (if (>= i 0)
@@ -354,8 +354,18 @@
 
        (def dof-state (atom {}))
 
-       (defn dof-get-cljs-ns []
-         (get-in @dof-state [:cljs (ns-symbol)]))
+       (defn dof-get-cljs-ns
+         ([] (dof-get-cljs-ns (ns-symbol)))
+         ([s] (get-in @dof-state [:cljs s])))
+
+       (defn dof-get-clj-ns
+         ([] (dof-get-clj-ns (ns-symbol)))
+         ([x]
+          (let [ns-sym
+                (cond (instance? clojure.lang.Namespace x) (symbol (str x))
+                      (string? x) (symbol x)
+                      (symbol? x) x)]
+            (get-in @dof-state [:clj ns-sym]))))
 
        (comment (clojure.pprint/pprint @dof-state))
 
@@ -403,6 +413,60 @@
              (list* 'do sets)
              (list* 'do (cons `(def ~@(first all)) (next sets))))))
 
+       (defn dof-clj-parse-require-arg [x]
+         (cond
+           (symbol? x) {:name x :form x}
+           (vector? x) (merge (apply hash-map (next x)) {:name (first x) :form x})))
+
+       (defn dof-clj-require-sub-nss [require-arg]
+         (let [{:keys [as name form refer]} (dof-clj-parse-require-arg require-arg)
+               refer-all? (= :all refer)]
+           (cons form
+                 (->> (dof-get-clj-ns name)
+                      (mapcat (fn [suffix]
+                                (for [s (heads (dotsplit suffix))]
+                                  [(dotjoin name s) :as (dotjoin (or as (when-not refer-all? name)) s)])))
+                      vecset))))
+
+       ;; any harsh feelings about this ?
+
+       (defonce original-require @#'clojure.core/require)
+
+       (alter-var-root #'clojure.core/require
+                       (fn [_]
+                         (fn [& xs]
+                           #_(prob 'rexpanded (mapcat dof-clj-require-sub-nss xs))
+                           (apply original-require (mapcat dof-clj-require-sub-nss xs)))))
+
+       (defonce original-use @#'clojure.core/use)
+
+       (alter-var-root #'clojure.core/use
+                       (fn [_]
+                         (fn [& xs]
+
+                           (let [names
+                                 (->> xs
+                                      (map dof-clj-parse-require-arg)
+                                      (map :name))
+
+                                 sub-required
+                                 (mapcat #(-> [% :refer :all]
+                                              dof-clj-parse-require-arg
+                                              dof-clj-require-sub-nss
+                                              next)
+                                         names)]
+
+                             (apply original-use xs)
+
+                             (when (seq sub-required)
+                               (apply original-require sub-required))))))
+
+       (comment (:clj @dof-state)
+                (dof-clj-require-sub-nss 'speculoos.utils 'spu)
+                (dof foo.bar.baz.pop {:my :data})
+                (require '[speculoos.utils :as spu])
+                (use 'speculoos.utils))
+
        (defn dof-clj-form!
          [sym v]
          (let [ss (dotsplit sym)
@@ -418,12 +482,17 @@
                publics (when known-ns? (keys (ns-publics (the-ns sub-ns-sym))))
                exclusions (into (core-exclusions) (cons varsym publics))]
 
-           (swap! dof-state update
-                  ns-str
+           (swap! dof-state update-in
+                  [:clj ns-sym]
                   (fn [nss]
-                    (if-not ((set nss) ns-prefix)
-                      (conj (or nss []) ns-prefix)
-                      nss)))
+                    (loop [nss nss
+                           [ns-prefix & others :as all] (map dotjoin (heads (dotsplit ns-prefix)))]
+                      (if-not (seq all)
+                        nss
+                        (recur (if-not ((set nss) ns-prefix)
+                                 (conj (or nss []) ns-prefix)
+                                 nss)
+                               others)))))
            `(do
 
               ;; initialize unexistant parent namespaces
@@ -436,7 +505,7 @@
               (~'ns ~sub-ns-sym)
               (core-exclude '~exclusions)
               (use '~ns-sym)
-              ~@(->> (get @dof-state ns-str)
+              ~@(->> (dof-get-clj-ns ns-sym)
                      (mapcat (fn [suffix]
                                (for [s (heads (dotsplit suffix))]
                                  `(~'require '[~(dotjoin ns-str s) :as ~(dotjoin s)]))))

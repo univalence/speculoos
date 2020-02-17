@@ -35,7 +35,8 @@
                               :guard `(fn [x#] (~(u/mksym c "?") x#)))))
 
     (defmethod m/emit-pattern ::type [[c & ms]]
-      (m/emit-pattern (list (zipmap (->> (state/registered-type? [(symbol (str *ns*)) c] #_c) :fields-names (map keyword)) ms)
+      (m/emit-pattern (list (zipmap (->> (state/registered-type? [(symbol (str *ns*)) c])
+                                         :fields-names (map keyword)) ms)
                             :guard `(fn [x#] (~(u/mksym c "?") x#)))))
 
     (defmethod m/emit-pattern ::pred [[c x]]
