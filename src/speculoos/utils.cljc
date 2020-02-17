@@ -44,7 +44,21 @@
 
      (defmacro print-cljs-ns []
        (clojure.pprint/pprint (:ns &env))
-       nil)))
+       nil)
+
+     (defmacro throws [expr]
+       `(is ::catched
+            (try ~expr
+                 (catch ~(if (:ns &env)
+                           'js/Error
+                           'Exception)
+                        ~'_
+                   ::catched))))
+
+     #_(defmacro expansion-error [expr]
+       (is ::catched
+           (try (clojure.walk/macroexpand-all expr)
+                (catch Exception _ ::catched))))))
 
 (defn gat [xs i]
   (if (>= i 0)
@@ -325,6 +339,19 @@
 #?(:clj
    (do :dof
 
+       ;; dof is a fancy version of def that let you define multi level vars
+       ;; e.g
+       ;; (dof foo {:a :map})
+       ;; (dof foo.bar {:some :subvar})
+       ;; foo => {:a :map}
+       ;; foo.bar => {:some :subvar}
+       ;; in clojure this dot notation is not legal since it is reserved to classes
+       ;; but we can wrap some code containing dot notation in the 'with-dotsyms macro
+       ;; this will walk replace all dot symbols replacing them by their corresponding qualified-symbol notation
+       ;; foo.bar.baz will become foo.bar/baz and everything shoud word as intended
+       ;; in the future we could make this invisible to the user by wrapping all top level forms... but it looks kind of heavy
+
+
        (def dof-state (atom {}))
 
        (defn dof-get-cljs-ns []
@@ -348,9 +375,24 @@
            (map (fn [s] [s (get (dof-get-cljs-ns) s `(cljs.core/clj->js {}))])
                 (butlast (map dotjoin sym-heads)))))
 
+       (defn dof-cljs-primitive? [x]
+         (or (string? x) (number? x)))
+
+       (defn dof-cljs-primitive-check
+         [[sym val] parents childs]
+         (when (dof-cljs-primitive? val)
+           (assert (not (seq childs))
+                   (str "Can't bound a var that has childs to a js primitive (number or string)\n"
+                        "var: " [sym val] "\nhas childs:\n" childs)))
+         (mapv (fn [[n v]]
+                 (assert (not (dof-cljs-primitive? v))
+                         (str "dof cljs error: parent chain contains primitive: " [n v])))
+               parents))
+
        (defn dof-cljs-form! [sym v]
          (let [parents (dof-cljs-parents-couples sym)
                childs (dof-cljs-childs-couples sym)
+               _ (dof-cljs-primitive-check [sym v] parents childs)
                all (concat parents (list [sym v]) childs)
                sets (mapv (fn [[k v]] `(set! ~k ~v)) all)
                root? (get (dof-get-cljs-ns) (ffirst all))]
@@ -415,11 +457,7 @@
                   (next (dotsplit sym)))))
 
        (defmacro dof
-         ;; TODO handle core redef warnings
          ([sym]
-          #_(if (:ns &env)
-              `(dof ~sym (cljs.core/clj->js {}))
-              `(dof ~sym {}))
           (let [v (get (dof-get-cljs-ns) sym)]
             (if (:ns &env)
               `(dof ~sym ~(or v `(cljs.core/clj->js {})))
@@ -436,9 +474,67 @@
 
        (defmacro dofn [name & body]
          (let [fn-body (if (string? (first body)) (next body) body)]
-           `(dof ~name (fn ~@fn-body))))
-       ))
+           `(dof ~name (fn ~@fn-body))))))
 
+(comment :xp
+
+         (do :analyse
+
+             (let [h (fn me [x]
+                       (condp #(%1 %2) x
+                         symbol? [x]
+                         coll? (mapcat me x)
+                         []))]
+
+               (def all-syms (comp set h)))
+
+             (defn shadows
+               "given a binding form as the one that fn use for its args
+                it return a set of shadowed syms"
+               [binding-form]
+               (->> (destructure [binding-form '_])
+                    (take-nth 2) set
+                    (clojure.set/intersection (all-syms binding-form))))
+
+             )
+
+         (defn compile-module
+           ;; api arity
+           ([{:keys [name decls]}]
+            (compile-module [name] decls []))
+           ;; looping arity
+           ([ctx [decl :as decls] ret]
+            (cond
+
+              (not (seq decls)) ret
+
+              (re-matches #"^d[eo]f.*$" (name (first decl)))
+              (let [verb (cond (= "def" (name (first decl))) `dof
+                               (= "defn" (name (first decl))) `dofn
+                               :else (first decl))
+                    name (dotjoin ctx (second decl))]
+                (compile-module
+                  ctx (next decls)
+                  (conj ret (list* verb name (drop 2 decl)))))
+
+              (= 'module (first decl))
+              (compile-module
+                ctx (next decls)
+                (into ret (compile-module (conj ctx (second decl)) (drop 2 decl) [])))
+
+              :else
+              (compile-module
+                ctx (next decls)
+                (conj ret decl)))))
+
+         (compile-module
+           {:name 'bob
+            :decls '[(def a 1)
+                     (defn bib 42)
+                     (module foo
+                             (def p 42)
+                             (println 'iop))
+                     (println "iop")]}))
 
 
 

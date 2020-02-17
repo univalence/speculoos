@@ -142,9 +142,37 @@
       (num2 1.1)
       (num2 1.9)))
 
-;; nested types
+;; nested types ---------------------------------------------------------------
 
-(macroexpand '(deft t4 {a [b c] b {c ::int! d string? e [f ::int]}}))
+(deft t4
+      {a [b c]
+       b {c ::int!
+          d string?
+          e [f ::int]}})
+
+(u/with-dotsyms
+
+  (deftest nested-tests
+    ;; subconstructors
+    (is (t4.a 1 2)
+        (t4.a [1 2])
+        (t4.a.from-map {:b 1 :c 2}))
+
+    (is (t4.a? (t4.a 1 2))
+        (t4.a? (t4.a [1 2]))
+        (t4.a? (t4.a.from-map {:b 1 :c 2})))
+
+    (is (t4.b :c 1 :d "aze" :e {:f 1}) ;; c value is coerced to int
+        (t4.b {:c 1.9 :d "aze" :e {:f 1}})
+        (t4.b.from-map {:c 1.2 :d "aze" :e {:f 1}}))
+
+    (is (t4.b? (t4.b :c 1.1 :d "aze" :e {:f 1})))
+    (is (t4.b? (t4.b {:c 1.2 :d "aze" :e {:f 1}})))
+
+    (is (t4 :a (t4.a 1 2) :b (t4.b :c 1 :d "aze" :e {:f 1}))
+        (t4 :a [1 2] :b {:c 1.92 :d "aze" :e {:f 1}})
+        (t4 {:a [1 2] :b {:c 1.21 :d "aze" :e {:f 1}}})
+        (t4.from-map {:a [1 2] :b {:c 1.2 :d "aze" :e {:f 1}}}))))
 
 ;; defc -----------------------------------------------------------------------
 

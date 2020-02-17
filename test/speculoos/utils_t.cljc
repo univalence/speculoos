@@ -30,27 +30,35 @@
       ((f1 {a :a} (+ a a)) {:a 1})))
 
 #_(defn go [& _]
-  (tests/run-tests 'speculoos.utils-t))
+    (tests/run-tests 'speculoos.utils-t))
 
-#_(u/with-dotsyms
+(u/with-dotsyms
 
-  (dof a 1)
-  (dof a.b 2)
-  (dof a.b.c 3)
+  (dof doftest (fn [x] x))
+  (dof doftest.b {})
+  (dof doftest.b.c 3)
 
-  (deftest dof-tests
-    (is a 1)
-    (is a.b 2)
-    (is a.b.c 3))
+  (is (doftest 1) 1)
+  (is doftest.b {})
+  (is doftest.b.c 3)
 
-  ;; I would like to be able to test redefs
-  ;; (dof a.b 4)
-  ;; but clojure.tests seems to run all the defs before assertions and the first assertion breaks
-  ;; (deftest dof-tests
-  ;    (is a 1)
-  ;    (is a.b 4) ;<- here
-  ;    (is a.b.c 3)) ;; others have not been touched
+  (dof doftest.b {:foo :bar})
+
+  (is (doftest 1) 1)
+  (is doftest.b {:foo :bar}) ;<- here
+  (is doftest.b.c 3) ;; others have not been touched
 
   )
 
+#?(:cljs
+   (do
+     ;; if a primitive is givent as value (string or number)
+     ;; this element cannot have childs
+     (dof doftest.prim 1)
+     (is doftest.prim 1)
+     ;; (dof doftest.prim.nochild {:iop :pop}) ;; throws
 
+     (dof doftest.prim "1")
+     (is doftest.prim "1"))
+   ;; (dof doftest.prim.nochild {:iop :pop}) ;; throws TODO catch expansion error
+   )

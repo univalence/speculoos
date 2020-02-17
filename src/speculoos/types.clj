@@ -67,10 +67,19 @@
 (defn positional-constructor-form
   [{:as deft-spec
     :keys [builtin-positional-constructor-sym
-           fields-names]}]
-  `(fn ~fields-names
-     (let ~(binding-form deft-spec)
-       (~builtin-positional-constructor-sym ~@fields-names))))
+           fields-names arity fullname]}]
+  (let [fn-sym (gensym)
+        applied-arg-sym (gensym)]
+    `(fn ~fn-sym
+       ~@(when (> arity 1)
+           [`([~applied-arg-sym]
+              (if (and (vector? ~applied-arg-sym)
+                       (= ~arity (count ~applied-arg-sym)))
+                (apply ~fn-sym ~applied-arg-sym)
+                ~(u/error-form "not applicable to " (str fullname) "\n" applied-arg-sym)))])
+       (~fields-names
+         (let ~(binding-form deft-spec)
+           (~builtin-positional-constructor-sym ~@fields-names))))))
 
 (defn map-constructor-form
   [{:as deft-spec
@@ -91,7 +100,9 @@
 (defn unpositional-constructor-form
   [{:keys [map-constructor-sym]}]
   (let [constr (if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym))]
-    `(fn [& xs#] (~constr (apply hash-map xs#)))))
+    `(fn
+       ([x#] (~constr x#))
+       ([x# & xs#] (~constr (apply hash-map x# xs#))))))
 
 ;; macros -------------------------------------------------------------------------------------
 
@@ -153,6 +164,7 @@
          ;; misc
          :spec spec
          :positional positional? :alias alias?
+         :arity (and positional? (count fields))
          :body body :subs subs}))
 
     #_(clojure.pprint/pprint (parse-deft '[iop {a [b c] b number? c {d integer? e [f g]}}]))
@@ -209,22 +221,34 @@
                            #(fn [& xs#]
                               (tcg/fmap ~builtin-map-constructor-sym
                                         (apply % xs#))))
-                   (update :conform
+                   #_(update :conform
                            #(fn [s# x#]
                               (let [ret# (% s# x#)]
+                                (if (~(ss/spec-sym "invalid?") ret#)
+                                  ret#
+                                  (~builtin-map-constructor-sym ret#)))))
+
+                   (update :conform
+                           #(fn [s# ~'X] ;; gensyms are not unified thru nested syntax-quotes
+                              (let [~'X ;; here we are taking care of conforming a vector to a positional type
+                                    ~(if positional
+                                       `(if (vector? ~'X)
+                                          ((u/with-dotsyms ~fullname) ~'X)
+                                          ~'X)
+                                       'X)
+                                    ret# (% s# ~'X)]
                                 (if (~(ss/spec-sym "invalid?") ret#)
                                   ret#
                                   (~builtin-map-constructor-sym ret#)))))))
 
 
 
-             (u/dof ~map-constructor-sym ~(map-constructor-form parsed #_#_builtin-map-constructor-sym fields))
+             (u/dof ~map-constructor-sym ~(map-constructor-form parsed))
 
              ;; constructors
              ~(if positional
-                `(u/dof ~fullname ~(positional-constructor-form parsed #_#_builtin-positional-constructor-sym fields))
-                `(u/dof ~fullname ~(unpositional-constructor-form parsed
-                                                                  #_(if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym)))))
+                `(u/dof ~fullname ~(positional-constructor-form parsed))
+                `(u/dof ~fullname ~(unpositional-constructor-form parsed)))
 
              ;; predicate
              (u/dof ~predicate-sym (fn [x#] (~(u/mksym record-sym "?") x#)))
@@ -244,8 +268,8 @@
                        (let [extra-keys# (dissoc x# ~@(mapv keyword fields-names))]
                          (cljs.core/write-all
                            w# (if (seq extra-keys#)
-                                (cons '~name (mapcat identity x#))
-                                (cons '~name (map (partial get x#) ~(mapv keyword fields-names))))))))
+                                (cons '~fullname (mapcat identity x#))
+                                (cons '~fullname (map (partial get x#) ~(mapv keyword fields-names))))))))
 
                   `(defmethod print-method
                      ~record-sym [x# w#]
@@ -326,7 +350,7 @@
          (t4 :a [1 2])
 
          (macroexpand '(deft t4 {a {b [c :- number?]}}))
-         (speculoos.utils/declare t4.a t4.a?)
+
          (do t4/a)
          (deft t4 {a {b [c :- number?]}})
          (macroexpand '(deft t4 {a {b number?}}))
