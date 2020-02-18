@@ -5,7 +5,12 @@
             [clojure.set :as set]
             [speculoos.utils :as u]
             [speculoos.specs :as ss]
-            [speculoos.state :as state :refer [*cljs?*]]))
+            [speculoos.state :as state :refer [*cljs?* *expansion-env*]]))
+
+(defn known-type? [s]
+ #_(println 'known-type? s (and (symbol? s) (u/qualify-symbol *expansion-env* s)))
+  (when-let [qs (and (symbol? s) (u/qualify-symbol *expansion-env* s))]
+    (get-in @state/state [:types (state/target-kw) [(symbol (namespace qs)) (symbol (name qs))]])))
 
 (do :extra-patterns-predicates
 
@@ -22,20 +27,18 @@
     (extend-protocol mp/ISyntaxTag
       clojure.lang.ISeq
       (syntax-tag [xs]
-        #_(println "syntax" xs)
         (cond
           (spec-pattern? xs) ::spec
           (spec-shorthand-pattern? xs) ::spec-shorthand
-          (state/registered-type? [(symbol (str *ns*)) (first xs)]) ::type
+          (known-type? (first xs)) ::type
           (u/predicate-symbol? (first xs)) ::pred
           :else ::m/seq)))
 
-    #_(defmethod m/emit-pattern ::type [[c & ms]]
-        (m/emit-pattern (list (zipmap (->> (state/registered-type? c) :fields (map keyword)) ms)
-                              :guard `(fn [x#] (~(u/mksym c "?") x#)))))
-
     (defmethod m/emit-pattern ::type [[c & ms]]
-      (m/emit-pattern (list (zipmap (->> (state/registered-type? [(symbol (str *ns*)) c])
+      #_(println "emit-pat " c ms (list (zipmap (->> (known-type? c) #_(state/registered-type? [(symbol (str *ns*)) c])
+                                                   :fields-names (map keyword)) ms)
+                                      :guard `(fn [x#] (~(u/mksym c "?") x#))))
+      (m/emit-pattern (list (zipmap (->> (known-type? c) #_(state/registered-type? [(symbol (str *ns*)) c])
                                          :fields-names (map keyword)) ms)
                             :guard `(fn [x#] (~(u/mksym c "?") x#)))))
 
@@ -95,7 +98,8 @@
 
                 ;; here ---------------------------------------
                 (or
-                  (state/registered-type? [(symbol (str *ns*)) (first pat)]
+                  (known-type? (first pat))
+                  #_(state/registered-type? [(symbol (str *ns*)) (first pat)]
                                           #_(first pat))
                   (u/predicate-symbol? (first pat)))
                 (recur (concat pats (next pat)) seen dups)
@@ -126,9 +130,14 @@
 (do :match-fns
 
     (defn expand-match-form [argv clauses & [wild-clause]]
-      (macroexpand `(~(if *cljs?* `cm/match `m/match)
-                      ~argv ~@(doall (apply concat clauses))
-                      ~@wild-clause)))
+      #_(println 'expand-match-form #_[argv clauses wild-clause] `(~(if *cljs?* `cm/match `m/match)
+                                                                ~argv ~@(doall (apply concat clauses))
+                                                                ~@wild-clause))
+
+      (identity ;u/prob 'exp
+              (macroexpand `(~(if *cljs?* `cm/match `m/match)
+                                   ~argv ~@(doall (apply concat clauses))
+                                   ~@wild-clause))))
 
 
     (defmacro fm [x & xs]
@@ -207,7 +216,8 @@
                               lpat))]
                       [(conj blpat lpat') (wrap-return expr)]))]
 
-              (binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
+              (state/binding-expansion-dynamic-vars #_#_binding [*cljs?* (or *cljs?* (boolean (:ns &env)))
+                        *expansion-env* &env]
 
                 (when variadic-arity
 
@@ -265,15 +275,16 @@
                               [(first xs) (next xs)] [nil xs])]
                         (assoc ret n {:arities arities :return-spec return-spec})))
                     {} body)]
-        (state/register-protocol! n proto-info)
-        `(~(if (:ns &env) 'cljs.core/defprotocol 'clojure.core/defprotocol) ~n
-           ~@(when doc [doc])
-           ~@(mapv (fn [[n {:keys [arities]}]]
-                     (into () (reverse (list* n arities))))
-                   proto-info))))
+        (state/binding-expansion-dynamic-vars #_state/binding-cljs-flag #_[*cljs?* (or *cljs?* (boolean (:ns &env)))]
+          (state/register-protocol! n proto-info)
+          `(~(if (:ns &env) 'cljs.core/defprotocol 'clojure.core/defprotocol) ~n
+             ~@(when doc [doc])
+             ~@(mapv (fn [[n {:keys [arities]}]]
+                       (into () (reverse (list* n arities))))
+                     proto-info)))))
 
     (defmacro proto+ [p & body]
-      (binding [*cljs?* (boolean (:ns &env))]
+      (state/binding-expansion-dynamic-vars #_state/binding-cljs-flag ;binding [*cljs?* (or (boolean (:ns &env)) *cljs?*)]
         (let [chunks
               (map (partial apply concat)
                    (partition 2 (partition-by symbol? body)))
@@ -281,13 +292,13 @@
               return-spec
               (reduce (fn [ret [n {:keys [return-spec]}]]
                         (assoc ret n return-spec))
-                      {} (get-in @state/state [:protocols p]))
+                      {} (state/registered-protocol? p))
 
               formatted-chunks
               (doall
                 (mapcat (fn [[type & mets]]
                           (cons type
-                                (map (fn [[metname & body]]
+                                (mapv (fn [[metname & body]]
                                        (let [body
                                              (cond (every? seq? body)
                                                    (map (fn [[argv & [_ & body+ :as body] :as all]]
@@ -305,6 +316,6 @@
                         chunks))]
 
           `(extend-protocol ~p
-             ~@formatted-chunks)))))
+             ~@(doall formatted-chunks))))))
 
 

@@ -295,7 +295,7 @@
 
     (defmacro deft
       [& body]
-      (binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
+      (state/binding-cljs-flag ;binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
         (-> body parse-deft emit-deft)))
 
     (defmacro defc

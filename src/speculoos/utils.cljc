@@ -42,9 +42,23 @@
          `(cljs.test/is (~'= nil ~x ~@xs))
          `(clojure.test/is (~'= nil ~x ~@xs))))
 
-     (defmacro print-cljs-ns []
-       (clojure.pprint/pprint (:ns &env))
-       nil)
+     #_(defmacro print-cljs-ns []
+         (clojure.pprint/pprint (:ns &env))
+         nil)
+
+     #_(defmacro resolve-cljs-symbol []
+         (clojure.pprint/pprint (:ns &env))
+         nil)
+
+     (defn qualify-symbol [env sym]
+       (if (:ns env)
+         (:name (cljs.analyzer/resolve-var env sym))
+         (if-let [v (resolve env sym)]
+           (let [{:keys [ns name]} (meta v)]
+             (symbol (str ns) (str name))))))
+
+     (defmacro qualified-symbol [sym]
+       (list 'quote (qualify-symbol &env sym)))
 
      (defmacro throws [expr]
        `(is ::catched
@@ -315,13 +329,15 @@
 
        (defn dotsym? [x]
          (and (symbol? x)
-              (let [ss (str/split (name x) #"\.")]
+              (let [ss (dotsplit (name x))]
                 (and (seq (next ss))
                      (every? #(not (re-matches #"^[A-Z].*" %)) ss)))))
 
        (defn dotsym->qualified-sym [x]
-         (let [ss (str/split (name x) #"\.")]
-           (symbol (str/join "." (butlast ss)) (last ss))))
+         (let [ss (dotsplit (name x))
+               ns (namespace x)]
+           (symbol (-> (if ns (cons ns ss) ss) butlast dotjoin name)
+                   (last ss))))
 
        (defmacro with-dotsyms [& body]
          (if (:ns &env)
