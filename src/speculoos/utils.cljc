@@ -5,7 +5,7 @@
     [clojure.test]
     [cljs.test]
     [clojure.walk :refer [postwalk]]
-    #?(:clj [speculoos.state :refer [*cljs?*]])
+    #?(:clj [speculoos.state :as state :refer [*cljs?*]])
     [#?(:clj clojure.core :cljs cljs.core) :as c]
     [#?(:cljs cljs.pprint :clj clojure.pprint) :as pp]))
 
@@ -339,9 +339,9 @@
            (symbol (-> (if ns (cons ns ss) ss) butlast dotjoin name)
                    (last ss))))
 
-       (defmacro with-dotsyms [& body]
-         (if (:ns &env)
-           `(do ~@body) ;;in clojurescript we do nothing
+       (defn walk-dotsyms [body]
+         (state/if-cljs
+           body
            (letfn [(walk [body]
                      (walk? body
                             ;; node?
@@ -350,7 +350,21 @@
                             (fn [x] (cond (dof-form? x) (concat (take 2 x) (walk (drop 2 x)))
                                           (dotsym? x) (dotsym->qualified-sym x)
                                           :else x))))]
-             `(do ~@(walk body)))))))
+             (walk body))))
+
+       (defn doall-rec
+         "realize all nested potetially nested lazy sequences
+          usefull in macros, because when using dynamic vars based expansion state, we have to be sure that there is no lazyness in the expansion
+          otherwise dynamic vars will not be bounded as intended when expansion lazy parts are realized"
+         [x]
+         (cond (seq? x) (or (seq x) ())
+               (coll? x) ($ x doall-rec)
+               :else x))
+
+       (defmacro with-dotsyms [& body]
+         (if (:ns &env)
+           `(do ~@body) ;;in clojurescript we do nothing
+           `(do ~@(walk-dotsyms body))))))
 
 #?(:clj
    (do :dof

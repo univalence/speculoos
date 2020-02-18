@@ -184,6 +184,29 @@
   (comment (add2 :io)) ;; throws because of violated return spec
   )
 
+;; subpatterns
+
+(deft foo [bar :- [val :- integer?]
+           baz :- string?])
+
+(deft iop {bar integer?
+           baz string?})
+
+(u/with-dotsyms
+
+  (defm subpat
+        [(foo a b :extra c) x] [:case1 a b c x]
+        [x (foo.bar y)] [:case2 x y]
+        [(iop :bar x :baz y) z] [:case3 x y z])
+
+  (deftest subpatterns-test
+    (is (subpat 1 (foo.bar 2))
+        [:case2 1 2])
+    (is (subpat (foo (foo.bar 1) "io" :extra 34) 42)
+        [:case1 (foo.bar 1) "io" 34 42])
+    (is (subpat (iop :bar 1 :baz "io") 42)
+        [:case3 1 "io" 42])))
+
 ;; defproto is an extension of core/defprotocol
 ;; it can be used exactly like defprotocol
 (defproto P1

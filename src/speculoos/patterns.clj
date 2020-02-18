@@ -5,12 +5,15 @@
             [clojure.set :as set]
             [speculoos.utils :as u]
             [speculoos.specs :as ss]
-            [speculoos.state :as state :refer [*cljs?* *expansion-env*]]))
+            [speculoos.state :as state :refer [if-cljs]]))
+
+(defn qualified-type-symbol [x]
+  (when-let [qs (state/qualify-symbol x)]
+    (u/dotjoin (namespace qs) (name qs))))
 
 (defn known-type? [s]
- #_(println 'known-type? s (and (symbol? s) (u/qualify-symbol *expansion-env* s)))
-  (when-let [qs (and (symbol? s) (u/qualify-symbol *expansion-env* s))]
-    (get-in @state/state [:types (state/target-kw) [(symbol (namespace qs)) (symbol (name qs))]])))
+  (when-let [qs (qualified-type-symbol s)]
+    (state/registered-type? qs)))
 
 (do :extra-patterns-predicates
 
@@ -35,22 +38,25 @@
           :else ::m/seq)))
 
     (defmethod m/emit-pattern ::type [[c & ms]]
-      #_(println "emit-pat " c ms (list (zipmap (->> (known-type? c) #_(state/registered-type? [(symbol (str *ns*)) c])
-                                                   :fields-names (map keyword)) ms)
-                                      :guard `(fn [x#] (~(u/mksym c "?") x#))))
-      (m/emit-pattern (list (zipmap (->> (known-type? c) #_(state/registered-type? [(symbol (str *ns*)) c])
-                                         :fields-names (map keyword)) ms)
-                            :guard `(fn [x#] (~(u/mksym c "?") x#)))))
+      (let [{:keys [fields-names positional arity]} (known-type? c)
+            fields-keywords (map keyword fields-names)
+            positional-extension (when (and arity (> (count ms) arity)) (apply hash-map (drop arity ms)))
+            pred-sym (symbol (namespace c) (str (name c) "?"))]
+        (m/emit-pattern (list (if positional
+                                (merge (zipmap fields-keywords ms) positional-extension)
+                                (merge (zipmap fields-keywords (repeat nil))
+                                       (apply hash-map ms)))
+                              :guard `(fn [x#] (~pred-sym x#))))))
 
     (defmethod m/emit-pattern ::pred [[c x]]
       (m/emit-pattern (list x :guard c)))
 
     (defmethod m/emit-pattern ::spec [[x _ s]]
-      (m/emit-pattern (list (list x :guard (if *cljs?* 'cljs.core/identity clojure.core/identity))
+      (m/emit-pattern (list (list x :guard (if-cljs 'cljs.core/identity clojure.core/identity))
                             :<< (ss/conformer-form s))))
 
     (defmethod m/emit-pattern ::spec-shorthand [[x s]]
-      (m/emit-pattern (list (list x :guard (if *cljs?* 'cljs.core/identity clojure.core/identity))
+      (m/emit-pattern (list (list x :guard (if-cljs 'cljs.core/identity clojure.core/identity))
                             :<< (ss/conformer-form s))))
 
     (defmethod m/emit-pattern-for-syntax [:default :as] [[p _ sym]]
@@ -99,8 +105,6 @@
                 ;; here ---------------------------------------
                 (or
                   (known-type? (first pat))
-                  #_(state/registered-type? [(symbol (str *ns*)) (first pat)]
-                                          #_(first pat))
                   (u/predicate-symbol? (first pat)))
                 (recur (concat pats (next pat)) seen dups)
                 ;; --------------------------------------------
@@ -130,14 +134,9 @@
 (do :match-fns
 
     (defn expand-match-form [argv clauses & [wild-clause]]
-      #_(println 'expand-match-form #_[argv clauses wild-clause] `(~(if *cljs?* `cm/match `m/match)
-                                                                ~argv ~@(doall (apply concat clauses))
-                                                                ~@wild-clause))
-
-      (identity ;u/prob 'exp
-              (macroexpand `(~(if *cljs?* `cm/match `m/match)
-                                   ~argv ~@(doall (apply concat clauses))
-                                   ~@wild-clause))))
+      (macroexpand `(~(if-cljs `cm/match `m/match)
+                      ~argv ~@(doall (apply concat clauses))
+                      ~@wild-clause)))
 
 
     (defmacro fm [x & xs]
@@ -216,8 +215,7 @@
                               lpat))]
                       [(conj blpat lpat') (wrap-return expr)]))]
 
-              (state/binding-expansion-dynamic-vars #_#_binding [*cljs?* (or *cljs?* (boolean (:ns &env)))
-                        *expansion-env* &env]
+              (state/binding-expansion-dynamic-vars
 
                 (when variadic-arity
 
@@ -275,16 +273,16 @@
                               [(first xs) (next xs)] [nil xs])]
                         (assoc ret n {:arities arities :return-spec return-spec})))
                     {} body)]
-        (state/binding-expansion-dynamic-vars #_state/binding-cljs-flag #_[*cljs?* (or *cljs?* (boolean (:ns &env)))]
+        (state/binding-expansion-dynamic-vars
           (state/register-protocol! n proto-info)
-          `(~(if (:ns &env) 'cljs.core/defprotocol 'clojure.core/defprotocol) ~n
+          `(defprotocol ~n
              ~@(when doc [doc])
              ~@(mapv (fn [[n {:keys [arities]}]]
                        (into () (reverse (list* n arities))))
                      proto-info)))))
 
     (defmacro proto+ [p & body]
-      (state/binding-expansion-dynamic-vars #_state/binding-cljs-flag ;binding [*cljs?* (or (boolean (:ns &env)) *cljs?*)]
+      (state/binding-expansion-dynamic-vars
         (let [chunks
               (map (partial apply concat)
                    (partition 2 (partition-by symbol? body)))
@@ -299,20 +297,20 @@
                 (mapcat (fn [[type & mets]]
                           (cons type
                                 (mapv (fn [[metname & body]]
-                                       (let [body
-                                             (cond (every? seq? body)
-                                                   (map (fn [[argv & [_ & body+ :as body] :as all]]
-                                                          (if-not body+ all (list argv (list* 'do body))))
-                                                        body)
+                                        (let [body
+                                              (cond (every? seq? body)
+                                                    (map (fn [[argv & [_ & body+ :as body] :as all]]
+                                                           (if-not body+ all (list argv (list* 'do body))))
+                                                         body)
 
-                                                   (every? vector? (take-nth 2 body))
-                                                   (partition 2 body)
+                                                    (every? vector? (take-nth 2 body))
+                                                    (partition 2 body)
 
-                                                   (vector? (first body))
-                                                   (list (list (first body) (list* 'do (next body))))
-                                                   :else (throw (Exception. (str "not valid method body " body))))]
-                                         (next (macroexpand-1 (list* `fm metname :- (return-spec metname) (apply concat body))))))
-                                     mets)))
+                                                    (vector? (first body))
+                                                    (list (list (first body) (list* 'do (next body))))
+                                                    :else (throw (Exception. (str "not valid method body " body))))]
+                                          (next (macroexpand-1 (list* `fm metname :- (return-spec metname) (apply concat body))))))
+                                      mets)))
                         chunks))]
 
           `(extend-protocol ~p

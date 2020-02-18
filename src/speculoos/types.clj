@@ -79,7 +79,9 @@
                 ~(u/error-form "not applicable to " (str fullname) "\n" applied-arg-sym)))])
        (~fields-names
          (let ~(binding-form deft-spec)
-           (~builtin-positional-constructor-sym ~@fields-names))))))
+           (~builtin-positional-constructor-sym ~@fields-names)))
+       ([~@fields-names & {:as xs#}]
+        (merge (~fn-sym ~@fields-names) xs#)))))
 
 (defn map-constructor-form
   [{:as deft-spec
@@ -197,7 +199,7 @@
 
         (let [pprint-sd-sym (if *cljs?* 'cljs.pprint/simple-dispatch 'clojure.pprint/simple-dispatch)]
 
-          (state/register-type! [ns fullname] parsed)
+          (state/register-type! (u/dotjoin ns fullname) #_[ns fullname] parsed)
 
           `(do
              (u/declare ~fullname ~predicate-sym)
@@ -295,7 +297,7 @@
 
     (defmacro deft
       [& body]
-      (state/binding-cljs-flag ;binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
+      (state/binding-expansion-dynamic-vars ;binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
         (-> body parse-deft emit-deft)))
 
     (defmacro defc
