@@ -116,7 +116,8 @@
     ;; t3 has a positional constructor and a c field that can be anything (no spec attached)
     (is (t3 1 "io" :anything))
 
-    ;; extra arities
+    ;; extra constructor arities
+
     ;; for conveniance positional types that have more than one fields have an extra arity 1
     ;; letting you pass either a map or a sequence
     (is (t2 [1 "io"])
@@ -134,9 +135,12 @@
     (is (t2' {:a 1 :b "io"})
         (t2' :a 1 :b "io"))
 
-    (is (t2' {:a 1 :b "io" :extra-field :extra-val})
-        (t2' :a 1 :b "io" :extra-field :extra-val)
-        (t2' :a 1 :b "io" {:extra-field :extra-val}))
+    (is (t2' {:a 1 :b "io" :extra-field :extra-val}) ;; with extended map
+        (t2' :a 1 :b "io" :extra-field :extra-val) ;; with extra fields
+        (t2' :a 1 :b "io" {:extra-field :extra-val}) ;; with extra map arg
+        (t2' [:a 1 :b "io" :extra-field :extra-val]) ;; applied
+        (t2' [:a 1 :b "io" {:extra-field :extra-val}])
+        )
     ))
 
 

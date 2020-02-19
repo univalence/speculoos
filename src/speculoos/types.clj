@@ -115,9 +115,13 @@
 
 (defn unpositional-constructor-form
   [{:keys [map-constructor-sym]}]
-  (let [constr (if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym))]
-    `(fn
-       ([x#] (~constr x#))
+  (let [fn-sym (gensym)
+        constr (if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym))]
+    `(fn ~fn-sym
+       ([x#] (cond
+               (map? x#) (~constr x#)
+               (sequential? x#) (apply ~fn-sym x#)
+               :else (u/error "aaaaaaarggggg")))
        ([x# & xs#]
         (if (even? (count xs#))
           (merge (~constr (apply hash-map x# (butlast xs#))) (last xs#))
