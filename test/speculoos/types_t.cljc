@@ -100,8 +100,9 @@
            (b :- string?)])
 
 (u/with-dotsyms
+
   (deftest constructors
-    ;; t2 instantiation (positional constructor
+    ;; t2 instantiation (positional constructor)
     (is (t2 1 "io")
         ;; map constructor
         (t2.from-map {:a 1 :b "io"}))
@@ -113,7 +114,30 @@
     (is (t2'' :a 1 :b "aze")) ;; c is not here, no problem
     (is (t2'' :a 1 :b "aze" :c :op)) ;; :c is here and validated
     ;; t3 has a positional constructor and a c field that can be anything (no spec attached)
-    (is (t3 1 "io" :anything))))
+    (is (t3 1 "io" :anything))
+
+    ;; extra arities
+    ;; for conveniance positional types that have more than one fields have an extra arity 1
+    ;; letting you pass either a map or a sequence
+    (is (t2 [1 "io"])
+        (t2 {:a 1 :b "io"})
+        (t2 1 "io"))
+
+    ;; you can pass extra keys like this
+    (is (t2 1 "io" :extra-field :extra-val) ;; a series of keyvalues following the positional fields
+        (t2 1 "io" {:extra-field :extra-val}) ;; a map following the positional fields
+        (t2 [1 "io" :extra-field :extra-val]) ;; the 2 above exemple works also when using applied syntax
+        (t2 [1 "io" {:extra-field :extra-val}])
+        (t2 {:a 1 :b "io" :extra-field :extra-val})) ;; a map containing required fields plus some extra fields
+
+    ;; same for non positional types
+    (is (t2' {:a 1 :b "io"})
+        (t2' :a 1 :b "io"))
+
+    (is (t2' {:a 1 :b "io" :extra-field :extra-val})
+        (t2' :a 1 :b "io" :extra-field :extra-val)
+        (t2' :a 1 :b "io" {:extra-field :extra-val}))
+    ))
 
 
 ;; coercion ------------------------------------------------------------------
@@ -144,11 +168,31 @@
 
 ;; nested types ---------------------------------------------------------------
 
+;; types can be nested
+
 (deft t4
       {a [b c]
        b {c ::int!
           d string?
-          e [f ::int]}})
+          e [f ::int
+             g :- string?]}})
+
+;; if a field has a spec in the form of a literal map or literal vector
+;; it is interpreted as a subtype
+
+;; in the preceding exemple those subtypes will be defined:
+
+;; (deft t4.a [b c])
+;; (deft t4.b.e [f ::int g :- string?])
+;; (deft t4.b
+;;       {c ::int!
+;;        d string?
+;;        e ::t4.b.e})
+
+;; then t4 can be defined like this
+;; (deft t4
+;;       {a ::t4.a
+;;        b ::t4.b})
 
 (u/with-dotsyms
 
@@ -162,17 +206,18 @@
         (t4.a? (t4.a [1 2]))
         (t4.a? (t4.a.from-map {:b 1 :c 2})))
 
-    (is (t4.b :c 1 :d "aze" :e {:f 1}) ;; c value is coerced to int
-        (t4.b {:c 1.9 :d "aze" :e {:f 1}})
-        (t4.b.from-map {:c 1.2 :d "aze" :e {:f 1}}))
+    (is (t4.b :c 1 :d "aze" :e {:f 1 :g "baz"}) ;; c value is coerced to int
+        (t4.b {:c 1.9 :d "aze" :e [1 "baz"]})
+        (t4.b.from-map {:c 1.2 :d "aze" :e {:f 1 :g "baz"}}))
 
-    (is (t4.b? (t4.b :c 1.1 :d "aze" :e {:f 1})))
-    (is (t4.b? (t4.b {:c 1.2 :d "aze" :e {:f 1}})))
+    (is (t4.b? (t4.b :c 1.1 :d "aze" :e {:f 1 :g "baz"})))
+    (is (t4.b? (t4.b {:c 1.2 :d "aze" :e [1 "baz"]})))
 
-    (is (t4 :a (t4.a 1 2) :b (t4.b :c 1 :d "aze" :e {:f 1}))
-        (t4 :a [1 2] :b {:c 1.92 :d "aze" :e {:f 1}})
-        (t4 {:a [1 2] :b {:c 1.21 :d "aze" :e {:f 1}}})
-        (t4.from-map {:a [1 2] :b {:c 1.2 :d "aze" :e {:f 1}}}))))
+    ;; constructor
+    (is (t4 :a (t4.a 1 2) :b (t4.b :c 1 :d "aze" :e {:f 1 :g "baz"}))
+        (t4 :a [1 2] :b {:c 1.92 :d "aze" :e {:f 1 :g "baz"}})
+        (t4 {:a [1 2] :b {:c 1.21 :d "aze" :e [1 "baz"]}})
+        (t4.from-map {:a [1 2] :b {:c 1.2 :d "aze" :e [1 "baz"]}}))))
 
 ;; defc -----------------------------------------------------------------------
 

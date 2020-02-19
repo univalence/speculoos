@@ -366,6 +366,36 @@
            `(do ~@body) ;;in clojurescript we do nothing
            `(do ~@(walk-dotsyms body))))))
 
+
+
+#?(:clj (do :defmac
+
+            (defmacro expanding [& body]
+              `(state/binding-expansion-dynamic-vars
+                 (with-dotsyms
+                   ~@(mapv (fn [x] `(doall-rec ~x)) body))))
+
+            (defmacro defmac
+              "a version of defmacro that binds expansion dynamic vars,
+              force laziness realisation and handle dotsyms
+              WIP"
+              [& body]
+              (let [{:keys [cases name]} (parse-fn body)]
+                `(defmacro ~name
+                   ~@(mapv
+                       (fn [[argv & body]]
+                         `(~argv
+                            (state/binding-expansion-dynamic-vars
+                              (let [~argv (walk-dotsyms ~argv)]
+                                ~@(mapv (fn [e] `(doall-rec (with-dotsyms ~e))) body)))))
+                       cases))))
+
+            (comment
+              (macroexpand '(speculoos.utils/walk-dotsyms x.y.z))
+              (macroexpand (defmac yop ([x] (println state/*cljs?*) `(str.split ~(str x) #"\." )) ([x y] y)))
+              (macroexpand '(yop aze.aze))
+              (clojure.walk/macroexpand-all '(defmac yop ([x] x x.y.z) ([x y] y))))))
+
 #?(:clj
    (do :dof
 
@@ -439,6 +469,7 @@
            (swap! dof-state update-in
                   [:cljs (ns-symbol)] merge
                   (into {} all))
+           #_(println 'root? root?)
            (if root?
              (list* 'do sets)
              (list* 'do (cons `(def ~@(first all)) (next sets))))))

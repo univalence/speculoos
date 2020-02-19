@@ -67,21 +67,35 @@
 (defn positional-constructor-form
   [{:as deft-spec
     :keys [builtin-positional-constructor-sym
+           map-constructor-sym
            fields-names arity fullname]}]
   (let [fn-sym (gensym)
-        applied-arg-sym (gensym)]
+        applied-arg-sym (gensym)
+        fields-keywords (mapv keyword fields-names)]
     `(fn ~fn-sym
+       ;; if our positional type has more than one field
+       ;; an extra arity 1 is made available
+       ;; allowing us to pass either a map or a vector
        ~@(when (> arity 1)
            [`([~applied-arg-sym]
-              (if (and (vector? ~applied-arg-sym)
-                       (= ~arity (count ~applied-arg-sym)))
+              (cond
+                (vector? ~applied-arg-sym)
                 (apply ~fn-sym ~applied-arg-sym)
+
+                (map? ~applied-arg-sym)
+                (u/with-dotsyms (~map-constructor-sym ~applied-arg-sym))
+
+                :else
                 ~(u/error-form "not applicable to " (str fullname) "\n" applied-arg-sym)))])
        (~fields-names
          (let ~(binding-form deft-spec)
            (~builtin-positional-constructor-sym ~@fields-names)))
-       ([~@fields-names & {:as xs#}]
-        (merge (~fn-sym ~@fields-names) xs#)))))
+       ;; extra fields can be passed after the positional arguments
+       ;; either as a map or a flat seq of key values
+       ([~@fields-names extras#]
+        (merge (~fn-sym ~@fields-names) extras#))
+       ([~@fields-names k# v# & {:as xs#}]
+        (merge (~fn-sym ~@fields-names) {k# v#} xs#)))))
 
 (defn map-constructor-form
   [{:as deft-spec
@@ -104,7 +118,10 @@
   (let [constr (if *cljs?* map-constructor-sym (u/dotsym->qualified-sym map-constructor-sym))]
     `(fn
        ([x#] (~constr x#))
-       ([x# & xs#] (~constr (apply hash-map x# xs#))))))
+       ([x# & xs#]
+        (if (even? (count xs#))
+          (merge (~constr (apply hash-map x# (butlast xs#))) (last xs#))
+          (~constr (apply hash-map x# xs#)))))))
 
 ;; macros -------------------------------------------------------------------------------------
 
@@ -175,7 +192,7 @@
                            d string?
                            e [f :- number?]}}))
 
-    (parse-deft '(t4 {a {b [c :- number?]}}))
+    #_(parse-deft '(t4 {a {b [c :- number?]}}))
     (defn emit-deft
       [{:as parsed
         :keys [ns ns-str name name-str
@@ -192,7 +209,7 @@
       ;; TODO, hide core redefs warnings
       (if spec
 
-        `(u/with-dotsyms
+        `(do ;u/with-dotsyms
            (~(ss/spec-sym "def") ~spec-keyword ~spec)
            (u/dof ~predicate-sym ~(ss/validator-form spec))
            (u/dof ~fullname ~(ss/conformer-form spec)))
@@ -224,11 +241,11 @@
                               (tcg/fmap ~builtin-map-constructor-sym
                                         (apply % xs#))))
                    #_(update :conform
-                           #(fn [s# x#]
-                              (let [ret# (% s# x#)]
-                                (if (~(ss/spec-sym "invalid?") ret#)
-                                  ret#
-                                  (~builtin-map-constructor-sym ret#)))))
+                             #(fn [s# x#]
+                                (let [ret# (% s# x#)]
+                                  (if (~(ss/spec-sym "invalid?") ret#)
+                                    ret#
+                                    (~builtin-map-constructor-sym ret#)))))
 
                    (update :conform
                            #(fn [s# ~'X] ;; gensyms are not unified thru nested syntax-quotes
@@ -297,7 +314,7 @@
 
     (defmacro deft
       [& body]
-      (state/binding-expansion-dynamic-vars ;binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
+      (u/expanding ;state/binding-expansion-dynamic-vars ;binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
         (-> body parse-deft emit-deft)))
 
     (defmacro defc
@@ -326,9 +343,10 @@
            (let [~sym ~name]
              (defm ~name
                    ~@(->> (take-nth 2 (next body))
-                          (mapv compile-return)
+                          (map compile-return)
                           (interleave (take-nth 2 body))
-                          doall)))))))
+                          ;doall
+                          )))))))
 
 (comment :deft-scratch
          (clojure.walk/macroexpand-all '(deft box [vl]))

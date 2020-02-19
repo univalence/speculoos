@@ -32,6 +32,19 @@
 #_(defn go [& _]
     (tests/run-tests 'speculoos.utils-t))
 
+;; dof is a fancy version of def that let you define multi level vars
+;; e.g
+;; (dof foo {:a :map})
+;; (dof foo.bar {:some :subvar})
+;; foo => {:a :map}
+;; foo.bar => {:some :subvar}
+;; in clojure this dot notation is not legal since it is reserved to classes
+;; but we can wrap some code containing dot notation in the 'with-dotsyms macro
+;; this will walk replace all dot symbols replacing them by their corresponding qualified-symbol notation
+;; foo.bar.baz will become foo.bar/baz and everything should word as intended
+;; in the future we could make this invisible to the user by wrapping all top level forms... but it looks kind of heavy
+
+
 (u/with-dotsyms
 
   (dof doftest (fn [x] x))
@@ -62,3 +75,5 @@
      (is doftest.prim "1"))
    ;; (dof doftest.prim.nochild {:iop :pop}) ;; throws TODO catch expansion error
    )
+
+

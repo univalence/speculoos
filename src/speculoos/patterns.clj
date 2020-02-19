@@ -139,117 +139,119 @@
                       ~@wild-clause)))
 
 
-    (defmacro fm [x & xs]
-      (let [[nam [x & xs]] (if (symbol? x) [x xs] [(gensym) (cons x xs)])
-            [return-spec clauses] (cond (qualified-keyword? x) [x xs]
-                                        (= :- x) [(first xs) (next xs)]
-                                        :else [nil (cons x xs)])
+    (defmacro fm [& body]
+      (u/expanding
+        (let [[x & xs] (u/walk-dotsyms body)
+              [nam [x & xs]] (if (symbol? x) [x xs] [(gensym) (cons x xs)])
+              [return-spec clauses] (cond (qualified-keyword? x) [x xs]
+                                          (= :- x) [(first xs) (next xs)]
+                                          :else [nil (cons x xs)])
 
-            wildcard? (partial = :else)
+              wildcard? (partial = :else)
 
-            pattern? #(or (vector? %) (wildcard? %))
+              pattern? #(or (vector? %) (wildcard? %))
 
-            clauses
-            (cond
+              clauses
+              (cond
 
-              ;; regular polyarity fn syntax: (pat1 & body1) (pat2 & body2) ...
-              (every? seq? clauses)
-              (map (fn [[p & bod :as all]]
-                     (let [cnt (count bod)]
-                       (if (= 1 cnt) all (list p (list* 'do bod))))
-                     clauses))
+                ;; regular polyarity fn syntax: (pat1 & body1) (pat2 & body2) ...
+                (every? seq? clauses)
+                (map (fn [[p & bod :as all]]
+                       (let [cnt (count bod)]
+                         (if (= 1 cnt) all (list p (list* 'do bod))))
+                       clauses))
 
-              ;; match syntax: pat1 expr1 pat2 expr2 ...
-              (every? pattern? (take-nth 2 clauses))
-              (partition 2 clauses)
+                ;; match syntax: pat1 expr1 pat2 expr2 ...
+                (every? pattern? (take-nth 2 clauses))
+                (partition 2 clauses)
 
-              ;; single arity: pattern & body
-              (vector? (first clauses))
-              (if (= 2 (count clauses))
-                (list clauses)
-                (list (list (first clauses) (list* 'do (next clauses))))))
-
-
-            wild-clause? (comp wildcard? first)
-
-            wild-clause (first (filter wild-clause? clauses))
-
-            clauses (remove wild-clause? clauses)
-
-            wrap-return
-            (fn [expr]
-              (if return-spec
-                `(or ~(ss/validator-form return-spec expr)
-                     ~(u/error-form (str *ns*) "/"
-                                    (name nam) ":\ninvalid return value: "
-                                    `(~'pr-str ~expr) " is not a valid " return-spec))
-                expr))
-
-            ;; trying to compile it without core.match if possible (resulting in better performances)
-            fn-form (when-not wild-clause
-                      (try (macroexpand `(fn ~nam ~@(map (fn [[pat expr]] (list pat (wrap-return expr))) clauses)))
-                           (catch Exception _ nil)))]
+                ;; single arity: pattern & body
+                (vector? (first clauses))
+                (if (= 2 (count clauses))
+                  (list clauses)
+                  (list (list (first clauses) (list* 'do (next clauses))))))
 
 
-        (or fn-form
-            ;; else do the heavy stuff
-            (let [arity (comp count first)
-                  variadic-pattern? #(and (vector? %) (-> % reverse next first (= '&)))
-                  variadic-clause? (comp variadic-pattern? first)
-                  fixed-clauses (remove variadic-clause? clauses)
-                  variadic-clauses (filter variadic-clause? clauses)
-                  by-arity (group-by arity fixed-clauses)
-                  variadic-arity (and (seq variadic-clauses)
-                                      (-> variadic-clauses first first count dec))
+              wild-clause? (comp wildcard? first)
 
-                  variadic-case
-                  (fn self [[pat expr]]
-                    (let [lpat (last pat)
-                          blpat (vec (drop-last 2 pat))
-                          lpat'
-                          (if-not (seq? lpat)
-                            lpat
-                            (condp = (mp/syntax-tag lpat)
-                              ::spec (list (first lpat) :- (list (ss/spec-sym "*") (nth lpat 2)))
-                              ::spec-shorthand (list (first lpat) :- (list (ss/spec-sym "*") (second lpat)))
-                              lpat))]
-                      [(conj blpat lpat') (wrap-return expr)]))]
+              wild-clause (first (filter wild-clause? clauses))
 
-              (state/binding-expansion-dynamic-vars
+              clauses (remove wild-clause? clauses)
 
-                (when variadic-arity
+              wrap-return
+              (fn [expr]
+                (if return-spec
+                  `(or ~(ss/validator-form return-spec expr)
+                       ~(u/error-form (str *ns*) "/"
+                                      (name nam) ":\ninvalid return value: "
+                                      `(~'pr-str ~expr) " is not a valid " return-spec))
+                  expr))
 
-                  (assert (apply = (map arity variadic-clauses))
-                          "variadic patterns should be equals in length")
+              ;; trying to compile it without core.match if possible (resulting in better performances)
+              fn-form (when-not wild-clause
+                        (try (macroexpand `(fn ~nam ~@(map (fn [[pat expr]] (list pat (wrap-return expr))) clauses)))
+                             (catch Exception _ nil)))]
 
-                  (assert (every? (partial > variadic-arity) (keys by-arity))
-                          (str "fixed arity > variadic arity"
-                               (take-nth 2 clauses))))
 
-                `(fn ~nam
+          (or fn-form
+              ;; else do the heavy stuff
+              (let [arity (comp count first)
+                    variadic-pattern? #(and (vector? %) (-> % reverse next first (= '&)))
+                    variadic-clause? (comp variadic-pattern? first)
+                    fixed-clauses (remove variadic-clause? clauses)
+                    variadic-clauses (filter variadic-clause? clauses)
+                    by-arity (group-by arity fixed-clauses)
+                    variadic-arity (and (seq variadic-clauses)
+                                        (-> variadic-clauses first first count dec))
 
-                   ;; fixed clauses
-                   ~@(mapv (fn [[argv clauses]]
-                             `(~argv ~(wrap-return
-                                        (expand-match-form argv clauses wild-clause))))
-                           (u/map-keys (fn [n] (vec (repeatedly n gensym)))
-                                       by-arity))
+                    variadic-case
+                    (fn self [[pat expr]]
+                      (let [lpat (last pat)
+                            blpat (vec (drop-last 2 pat))
+                            lpat'
+                            (if-not (seq? lpat)
+                              lpat
+                              (condp = (mp/syntax-tag lpat)
+                                ::spec (list (first lpat) :- (list (ss/spec-sym "*") (nth lpat 2)))
+                                ::spec-shorthand (list (first lpat) :- (list (ss/spec-sym "*") (second lpat)))
+                                lpat))]
+                        [(conj blpat lpat') (wrap-return expr)]))]
 
-                   ;; variadic clauses
-                   ~@(when variadic-arity
-                       (let [argv
-                             (-> (dec variadic-arity)
-                                 (repeatedly gensym)
-                                 (concat ['& (gensym)])
-                                 vec)
-                             variadic-clauses
-                             (mapv variadic-case variadic-clauses)]
+                (do ;state/binding-expansion-dynamic-vars
 
-                         [(list argv
-                                (expand-match-form
-                                  (vec (remove '#{&} argv))
-                                  variadic-clauses
-                                  wild-clause))]))))))))
+                  (when variadic-arity
+
+                    (assert (apply = (map arity variadic-clauses))
+                            "variadic patterns should be equals in length")
+
+                    (assert (every? (partial > variadic-arity) (keys by-arity))
+                            (str "fixed arity > variadic arity"
+                                 (take-nth 2 clauses))))
+
+                  `(fn ~nam
+
+                     ;; fixed clauses
+                     ~@(mapv (fn [[argv clauses]]
+                               `(~argv ~(wrap-return
+                                          (expand-match-form argv clauses wild-clause))))
+                             (u/map-keys (fn [n] (vec (repeatedly n gensym)))
+                                         by-arity))
+
+                     ;; variadic clauses
+                     ~@(when variadic-arity
+                         (let [argv
+                               (-> (dec variadic-arity)
+                                   (repeatedly gensym)
+                                   (concat ['& (gensym)])
+                                   vec)
+                               variadic-clauses
+                               (mapv variadic-case variadic-clauses)]
+
+                           [(list argv
+                                  (expand-match-form
+                                    (vec (remove '#{&} argv))
+                                    variadic-clauses
+                                    wild-clause))])))))))))
 
     (defmacro defm
       "a simple pattern matched function"
@@ -265,24 +267,25 @@
 
     (defmacro defproto
       [n & body]
-      (let [[doc & body] (if (string? (first body)) body (cons nil body))
-            proto-info
-            (reduce (fn [ret [n & xs]]
-                      (let [[return-spec arities]
-                            (if-not (vector? (first xs))
-                              [(first xs) (next xs)] [nil xs])]
-                        (assoc ret n {:arities arities :return-spec return-spec})))
-                    {} body)]
-        (state/binding-expansion-dynamic-vars
-          (state/register-protocol! n proto-info)
-          `(defprotocol ~n
-             ~@(when doc [doc])
-             ~@(mapv (fn [[n {:keys [arities]}]]
-                       (into () (reverse (list* n arities))))
-                     proto-info)))))
+      (u/expanding
+        (let [[doc & body] (if (string? (first body)) body (cons nil body))
+              proto-info
+              (reduce (fn [ret [n & xs]]
+                        (let [[return-spec arities]
+                              (if-not (vector? (first xs))
+                                [(first xs) (next xs)] [nil xs])]
+                          (assoc ret n {:arities arities :return-spec return-spec})))
+                      {} body)]
+          (do ;state/binding-expansion-dynamic-vars
+            (state/register-protocol! n proto-info)
+            `(defprotocol ~n
+               ~@(when doc [doc])
+               ~@(mapv (fn [[n {:keys [arities]}]]
+                         (into () (reverse (list* n arities))))
+                       proto-info))))))
 
     (defmacro proto+ [p & body]
-      (state/binding-expansion-dynamic-vars
+      (u/expanding ;state/binding-expansion-dynamic-vars
         (let [chunks
               (map (partial apply concat)
                    (partition 2 (partition-by symbol? body)))
@@ -293,7 +296,7 @@
                       {} (state/registered-protocol? p))
 
               formatted-chunks
-              (doall
+              (do ;all
                 (mapcat (fn [[type & mets]]
                           (cons type
                                 (mapv (fn [[metname & body]]
@@ -314,6 +317,6 @@
                         chunks))]
 
           `(extend-protocol ~p
-             ~@(doall formatted-chunks))))))
+             ~@(do formatted-chunks))))))
 
 

@@ -192,12 +192,12 @@
 (deft iop {bar integer?
            baz string?})
 
-(u/with-dotsyms
+(defm subpat
+      [(foo a b :extra c) x] [:case1 a b c x]
+      [x (foo.bar y)] [:case2 x y]
+      [(iop :bar x :baz y) z] [:case3 x y z])
 
-  (defm subpat
-        [(foo a b :extra c) x] [:case1 a b c x]
-        [x (foo.bar y)] [:case2 x y]
-        [(iop :bar x :baz y) z] [:case3 x y z])
+(u/with-dotsyms
 
   (deftest subpatterns-test
     (is (subpat 1 (foo.bar 2))
