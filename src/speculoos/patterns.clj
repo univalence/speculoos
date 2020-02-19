@@ -285,7 +285,7 @@
                        proto-info))))))
 
     (defmacro proto+ [p & body]
-      (u/expanding ;state/binding-expansion-dynamic-vars
+      (u/expanding
         (let [chunks
               (map (partial apply concat)
                    (partition 2 (partition-by symbol? body)))

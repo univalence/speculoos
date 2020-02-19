@@ -318,8 +318,7 @@
 
     (defmacro deft
       [& body]
-      (u/expanding ;state/binding-expansion-dynamic-vars ;binding [*cljs?* (or *cljs?* (boolean (:ns &env)))]
-        (-> body parse-deft emit-deft)))
+      (u/expanding (-> body parse-deft emit-deft)))
 
     (defmacro defc
       "another taste of deft, see tutorial"
