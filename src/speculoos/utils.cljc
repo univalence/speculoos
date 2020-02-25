@@ -572,6 +572,11 @@
                                  `(~'require '[~(dotjoin ns-str s) :as ~(dotjoin s)]))))
                      (remove (fn [[_ [_ [_ _ a]]]] (= a ns-prefix)))
                      vecset)
+              ;; require parent ns aliases
+              ~@(mapv
+                  (fn [[alias ns]]
+                    `(require '[~(symbol (str ns)) :as ~alias]))
+                  (.getAliases *ns*))
 
               (def ~varsym
                 (with-dotsyms ~v))
@@ -594,6 +599,7 @@
               `(do (core-exclude '~sym)
                    (dof ~sym ~(or v {}))))))
          ([sym value]
+          (pp &env)
           (cond
             (:ns &env) (dof-cljs-form! sym value)
             (dof-trivial-case? sym) `(do (core-exclude '~sym) (def ~sym ~value))
