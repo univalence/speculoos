@@ -175,6 +175,7 @@
          :name name :name-str name-str
          :prefix prefix :prefix-str prefix-str
          :spec-keyword spec-keyword
+         :spec-keyword2 spec-keyword2
          ;; function syms
          :predicate-sym (u/mksym fullname "?")
          :record-sym record-sym
