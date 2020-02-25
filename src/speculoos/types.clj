@@ -233,6 +233,9 @@
              ;; specs
              (~(ss/spec-sym "def") ~spec-keyword any?) ;; declare main spec for potential recursion
 
+             ~@(when spec-keyword2
+                 [`(~(ss/spec-sym "def") ~spec-keyword2 ~spec-keyword)])
+
              ~@(mapv emit-deft subs)
 
              (~(ss/spec-sym "def") ~spec-keyword
@@ -263,10 +266,6 @@
                                 (if (~(ss/spec-sym "invalid?") ret#)
                                   ret#
                                   (~builtin-map-constructor-sym ret#)))))))
-
-             ~@(when spec-keyword2
-                 [`(~(ss/spec-sym "def") ~spec-keyword2 ~spec-keyword)])
-
 
              (u/dof ~map-constructor-sym ~(map-constructor-form parsed))
 
