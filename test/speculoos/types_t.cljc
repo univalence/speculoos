@@ -7,8 +7,7 @@
                :cljs [cljs.test :refer-macros [deftest]])
             [speculoos.specs])
   (#?(:clj :require :cljs :require-macros)
-   [speculoos.types :refer [deft defc]]
-   [speculoos.specs :refer [cpred]]))
+   [speculoos.core :refer [cpred deft defc]]))
 
 ;; creating a simple type with one field
 

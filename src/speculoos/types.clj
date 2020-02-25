@@ -224,6 +224,7 @@
           (state/register-type! (u/dotjoin ns fullname) #_[ns fullname] parsed)
 
           `(do
+
              (u/declare ~fullname ~predicate-sym)
 
              ;; record declaration
@@ -418,3 +419,4 @@
          (ns bop.bop)
 
          ())
+

@@ -7,6 +7,7 @@
     [speculoos.specs-t]
     [speculoos.types-t]
     [speculoos.patterns-t]
+    [speculoos.protocols-t]
     [speculoos.specs-t]
     [speculoos.utils-t]))
 
@@ -15,5 +16,6 @@
              'speculoos.specs-t
              'speculoos.types-t
              'speculoos.patterns-t
+             'speculoos.protocols-t
              'speculoos.specs-t
              'speculoos.utils-t))

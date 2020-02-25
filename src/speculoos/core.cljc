@@ -3,6 +3,7 @@
   (:require #?(:clj [clojure.spec.alpha :as s] :cljs [cljs.spec.alpha :as s])
             #?(:clj [clojure.core.match] :cljs [cljs.core.match])
             #?(:clj [speculoos.types :as st])
+            #?(:clj [speculoos.protocols :as pr])
             #?(:clj [speculoos.patterns :as sp])
             [speculoos.specs :as ss]
             [speculoos.flow :as flow]
@@ -16,7 +17,9 @@
        (defmacro fm [& xs] `(sp/fm ~@xs))
        (defmacro defspec [& xs] `(ss/defspec ~@xs))
        (defmacro spec [& xs] `(ss/spec ~@xs))
-       (defmacro cpred [& xs] `(ss/cpred ~@xs))))
+       (defmacro cpred [& xs] `(ss/cpred ~@xs))
+       (defmacro defproto [& xs] `(pr/defproto ~@xs))
+       (defmacro proto+ [& xs] `(pr/proto+ ~@xs))))
 
 (def at flow/at)
 (def path lenses/path)
@@ -29,3 +32,4 @@
 (u/import-defn+ lenses/mut<)
 (u/import-defn+ lenses/put)
 (u/import-defn+ lenses/pass)
+
