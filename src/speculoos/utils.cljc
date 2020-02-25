@@ -392,7 +392,7 @@
 
             (comment
               (macroexpand '(speculoos.utils/walk-dotsyms x.y.z))
-              (macroexpand (defmac yop ([x] (println state/*cljs?*) `(str.split ~(str x) #"\." )) ([x y] y)))
+              (macroexpand (defmac yop ([x] (println state/*cljs?*) `(str.split ~(str x) #"\.")) ([x y] y)))
               (macroexpand '(yop aze.aze))
               (clojure.walk/macroexpand-all '(defmac yop ([x] x x.y.z) ([x y] y))))))
 
@@ -566,6 +566,8 @@
               (~'ns ~sub-ns-sym)
               (core-exclude '~exclusions)
               (use '~ns-sym)
+
+
               ~@(->> (dof-get-clj-ns ns-sym)
                      (mapcat (fn [suffix]
                                (for [s (heads (dotsplit suffix))]
@@ -577,6 +579,11 @@
                   (fn [[alias ns]]
                     `(require '[~(symbol (str ns)) :as ~alias]))
                   (.getAliases *ns*))
+
+              ;; if parent ns contains a var of the same name it need to be unmapped
+              (when (ns-resolve '~ns-sym '~varsym)
+                #_(println "unmapping " '~varsym "in" '~sub-ns-sym "because of " (ns-resolve '~ns-sym '~varsym))
+                (ns-unmap '~sub-ns-sym '~varsym))
 
               (def ~varsym
                 (with-dotsyms ~v))
