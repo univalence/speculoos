@@ -593,13 +593,10 @@
 
        (defmacro dof
          ([sym]
-          (let [v (get (dof-get-cljs-ns) sym)]
-            (if (:ns &env)
-              `(dof ~sym ~(or v `(cljs.core/clj->js {})))
-              `(do (core-exclude '~sym)
-                   (dof ~sym ~(or v {}))))))
+          (if (:ns &env)
+            `(dof ~sym ~(or (get (dof-get-cljs-ns) sym) `(cljs.core/clj->js {})))
+            `(do (core-exclude '~sym) (dof ~sym {}))))
          ([sym value]
-          (pp &env)
           (cond
             (:ns &env) (dof-cljs-form! sym value)
             (dof-trivial-case? sym) `(do (core-exclude '~sym) (def ~sym ~value))
