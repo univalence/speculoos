@@ -143,6 +143,7 @@
             prefix (when (next segs) (u/dotjoin (butlast segs)))
             prefix-str (when prefix (c/name prefix))
             spec-keyword (keyword (c/name (u/dotjoin ns prefix)) name-str)
+            spec-keyword2 (when prefix (keyword (str *ns*) (c/name fullname)))
             alias? (not (or (map? fields-or-spec) (vector? fields-or-spec)))
             fields (when-not alias? (parse-fields fields-or-spec))
             req-fields (remove :optional fields)
@@ -200,7 +201,7 @@
     (defn emit-deft
       [{:as parsed
         :keys [ns ns-str name name-str
-               fullname spec-keyword
+               fullname spec-keyword spec-keyword2
                fields fields-names
                req-fields req-fields-names req-fields-specs
                opt-fields opt-fields-names opt-fields-specs
@@ -210,7 +211,6 @@
                map-constructor-sym builtin-map-constructor-sym
                builtin-positional-constructor-sym]}]
 
-      ;; TODO, hide core redefs warnings
       (if spec
 
         `(do ;u/with-dotsyms
@@ -264,6 +264,8 @@
                                   ret#
                                   (~builtin-map-constructor-sym ret#)))))))
 
+             ~@(when spec-keyword2
+                 [`(~(ss/spec-sym "def") ~spec-keyword2 ~spec-keyword)])
 
 
              (u/dof ~map-constructor-sym ~(map-constructor-form parsed))
