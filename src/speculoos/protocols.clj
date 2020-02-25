@@ -13,9 +13,11 @@
                     (let [[return-spec sigs]
                           (if-not (vector? (first xs))
                             [(first xs) (next xs)] [nil xs])
+                          doc (first (filter string? sigs))
+                          sigs (remove string? sigs)
                           arities (into {} (mapv (juxt count st/parse-fields) sigs))
                           sigs (map (partial mapv :sym) (vals arities))]
-                      (assoc ret n {:arities arities :sigs sigs :return-spec return-spec})))
+                      (assoc ret n {:doc doc :arities arities :sigs sigs :return-spec return-spec})))
                   {} body)]
       (state/register-protocol! n proto-info)
       `(defprotocol ~n
